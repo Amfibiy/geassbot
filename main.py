@@ -83,8 +83,9 @@ def remove_inaccessible():
 remove_inaccessible()
 check_all_groups_at_startup()
 
-# Регистрируем все обработчики
-register_all_handlers(bot)
+# Должно быть:
+register_all_handlers(bot, active_collections, test_collection, 
+                     collection_history, known_groups, user_sessions)
 
 def update_counters():
     """Фоновое обновление счётчиков"""
