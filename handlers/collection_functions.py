@@ -259,9 +259,11 @@ def stop_collection(message, bot, active_collections, test_collection,
 
 def handle_join(call, bot, active_collections, test_collection,
                 collection_history, known_groups, user_sessions):
+    print(f"🔘 ПОЛУЧЕН CALLBACK: {call.data}")
+    print(f"👤 От пользователя: {call.from_user.id}")
+    print(f"💬 В чате: {call.message.chat.id}")
+    
     chat_id = call.message.chat.id
-    collection = None
-    collection_type = None
     
     if chat_id in active_collections:
         collection = active_collections[chat_id]
@@ -304,8 +306,9 @@ def handle_join(call, bot, active_collections, test_collection,
                 reply_markup=new_keyboard,
                 parse_mode="Markdown"
             )
-    except:
-        pass
+            print(f"✅ Сообщение обновлено")
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
 
 def update_collection_counter(chat_id, collect, bot, current_time):
     """Обновляет счётчик обычного сбора"""
