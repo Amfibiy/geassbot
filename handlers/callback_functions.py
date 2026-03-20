@@ -192,7 +192,36 @@ def handle_private_text(message, bot, active_collections, test_collection,
 👇 Отправьте номер (1-7)"""
                 bot.reply_to(message, text_menu, parse_mode="Markdown")
             else:
-                bot.reply_to(message, "❌ Неверный номер")
+                # ИСПРАВЛЕНО: используем validate_id
+                valid_id = validate_id(text)
+                if valid_id:
+                    target_id = int(valid_id)
+                    found = False
+                    for cid, n, _ in groups:
+                        if cid == target_id or abs(cid) == target_id:
+                            found = True
+                            session['chat_id'] = cid
+                            session['name_group'] = n
+                            session['step'] = 'choice_action_clean'
+                            text_menu = f"""🧹 *Очистка истории: {n}*
+
+*Выберите действие:*
+
+1️⃣ Удалить всё
+2️⃣ Удалить сегодня
+3️⃣ Удалить вчера  
+4️⃣ Удалить за 7 дней
+5️⃣ Удалить за 30 дней
+6️⃣ Удалить за дату
+7️⃣ Удалить за период
+
+👇 Отправьте номер (1-7)"""
+                            bot.reply_to(message, text_menu, parse_mode="Markdown")
+                            break
+                    if not found:
+                        bot.reply_to(message, "❌ Группа с таким ID не найдена")
+                else:
+                    bot.reply_to(message, "❌ Неверный формат ID")
         except:
             bot.reply_to(message, "❌ Введите номер из списка")
     
