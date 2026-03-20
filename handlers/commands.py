@@ -1,4 +1,3 @@
-import telebot
 from utils.messages import get_welcome_text, get_help_text
 
 def register_commands(bot):

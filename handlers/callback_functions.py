@@ -1,5 +1,6 @@
 from database.groups import save_known_groups
 from utils.validators import validate_date, validate_id
+from utils.helpers import is_admin
 
 def handle_my_chat_member(update, bot, active_collections, test_collection,
                           collection_history, known_groups, user_sessions):
@@ -191,7 +192,7 @@ def show_result_by_date(message, chat_id, participants, date1_str, date2_str, se
     unique = {}
     for member in participants:
         uid = member['id']
-        name = f"@{member['username']}" if member.get('username') else member['name']
+        name = f"@{member['username']}" if member.get('username') else member.get('name', 'Неизвестно')
         if uid not in unique:
             unique[uid] = {'name': name, 'quantity': 1}
         else:

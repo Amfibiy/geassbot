@@ -84,7 +84,7 @@ def show_period_in_ls(message, chat_id, period, session, bot, collection_history
     unique = {}
     for member in all_participants:
         uid = member['id']
-        name_display = f"@{member['username']}" if member.get('username') else member['name']
+        name_display = f"@{member['username']}" if member.get('username') else member.get('name', 'Неизвестно')
         if uid not in unique:
             unique[uid] = {'name': name_display, 'quantity': 1}
         else:
@@ -111,7 +111,7 @@ def show_menu_of_choice_group_in_ls(message, user_id, bot, known_groups, active_
     
     for chat_id in known_groups:
         try:
-            if is_admin(chat_id, user_id, bot, known_groups):
+            if is_admin(chat_id, user_id):
                 chat = bot.get_chat(chat_id)
                 name = chat.title if chat.title else f"Группа {chat_id}"
                 available_groups.append((chat_id, name))
@@ -122,7 +122,7 @@ def show_menu_of_choice_group_in_ls(message, user_id, bot, known_groups, active_
     for chat_id in all_chats:
         if chat_id not in known_groups:
             try:
-                if is_admin(chat_id, user_id, bot, known_groups):
+                if is_admin(chat_id, user_id):
                     chat = bot.get_chat(chat_id)
                     name = chat.title if chat.title else f"Группа {chat_id}"
                     available_groups.append((chat_id, name))
@@ -180,7 +180,9 @@ def show_menu_periods_in_ls(message, session, bot, collection_history):
         keyboard.add(InlineKeyboardButton(text, callback_data=data))
     
     total_collections = len(collection_history.get(chat_id, []))
-    total_participants = sum(r['total_participants'] for r in collection_history.get(chat_id, []))
+    total_participants = 0
+    for record in collection_history.get(chat_id, []):
+        total_participants += record.get('total_participants', len(record.get('participants', [])))
     
     text = f"""📋 <b>Группа: {name}</b>
 
@@ -199,7 +201,7 @@ def show_participants_list(message, bot, active_collections, test_collection,
     user_id = message.from_user.id
     
     if message.chat.type != "private":
-        if not is_admin(chat_id, user_id, bot, known_groups):
+        if not is_admin(chat_id, user_id):
             bot.reply_to(message, "❌ Только для админов")
             return
         if chat_id in active_collections:

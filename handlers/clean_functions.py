@@ -75,7 +75,7 @@ def handle_clean(message, bot, active_collections, test_collection,
     user_id = message.from_user.id
     
     if message.chat.type != "private":
-        if not is_admin(chat_id, user_id, bot, known_groups):
+        if not is_admin(chat_id, user_id):
             bot.reply_to(message, "❌ Только для админов")
             return
         show_the_cleaning_group_menu(message, chat_id, bot, collection_history, user_sessions)
@@ -116,7 +116,7 @@ def show_group_to_clean_in_ls(message, user_id, bot, known_groups, collection_hi
     
     for chat_id in known_groups:
         try:
-            if is_admin(chat_id, user_id, bot, known_groups) and collection_history.get(chat_id):
+            if is_admin(chat_id, user_id) and collection_history.get(chat_id):
                 try:
                     chat = bot.get_chat(chat_id)
                     name = chat.title if chat.title else f"Группа {chat_id}"
@@ -130,7 +130,7 @@ def show_group_to_clean_in_ls(message, user_id, bot, known_groups, collection_hi
     for chat_id in collection_history.keys():
         if chat_id not in known_groups:
             try:
-                if is_admin(chat_id, user_id, bot, known_groups):
+                if is_admin(chat_id, user_id):
                     chat = bot.get_chat(chat_id)
                     name = chat.title if chat.title else f"Группа {chat_id}"
                     records = len(collection_history[chat_id])

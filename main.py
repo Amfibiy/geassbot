@@ -30,6 +30,12 @@ collection_history = load_history()
 user_sessions = {}
 known_groups = load_known_groups()
 
+# Устанавливаем глобальные переменные для utils.helpers
+import utils.helpers
+utils.helpers.known_groups = known_groups
+utils.helpers.collection_history = collection_history
+utils.helpers.bot = bot
+
 print(f"📋 Загружено {len(known_groups)} известных групп")
 
 def check_all_groups_at_startup():
@@ -83,7 +89,7 @@ def remove_inaccessible():
 remove_inaccessible()
 check_all_groups_at_startup()
 
-# Должно быть:
+# Регистрируем все обработчики
 register_all_handlers(bot, active_collections, test_collection, 
                      collection_history, known_groups, user_sessions)
 
@@ -94,12 +100,12 @@ def update_counters():
         
         # Обычные сборы
         for chat_id, collect in list(active_collections.items()):
-            from handlers.collection_logic import update_collection_counter
+            from handlers.collection_functions import update_collection_counter
             update_collection_counter(chat_id, collect, bot, current_time)
         
         # Тестовые сборы
         for chat_id, collect in list(test_collection.items()):
-            from handlers.collection_logic import update_test_counter
+            from handlers.collection_functions import update_test_counter
             update_test_counter(chat_id, collect, bot, current_time)
         
         time.sleep(30)

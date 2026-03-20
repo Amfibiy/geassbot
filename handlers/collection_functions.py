@@ -1,6 +1,6 @@
 import time
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from utils.helpers import is_admin, get_thread_id, format_time_left
+from utils.helpers import is_admin, get_thread_id
 from config.settings import COLLECTION_DURATION
 from database.history import save_history
 
@@ -59,7 +59,7 @@ def create_counter_message(count, time_left):
 
 def start_collection(message, bot, active_collections, test_collection,
                      collection_history, known_groups, user_sessions):
-    if not is_admin(message.chat.id, message.from_user.id, bot, known_groups):
+    if not is_admin(message.chat.id, message.from_user.id):
         bot.reply_to(message, "❌ Только для админов")
         return
     
@@ -199,7 +199,7 @@ def finish_collection(chat_id, bot, active_collections, test_collection,
 
 def start_test_collection(message, bot, active_collections, test_collection,
                           collection_history, known_groups, user_sessions):
-    if not is_admin(message.chat.id, message.from_user.id, bot, known_groups):
+    if not is_admin(message.chat.id, message.from_user.id):
         return
     chat_id = message.chat.id
     
@@ -240,7 +240,7 @@ def start_test_collection(message, bot, active_collections, test_collection,
 
 def stop_collection(message, bot, active_collections, test_collection,
                     collection_history, known_groups, user_sessions):
-    if not is_admin(message.chat.id, message.from_user.id, bot, known_groups):
+    if not is_admin(message.chat.id, message.from_user.id):
         bot.reply_to(message, "❌ Только для админов")
         return
     

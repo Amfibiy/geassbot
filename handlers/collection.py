@@ -1,8 +1,3 @@
-import time
-from database.history import save_history
-from utils.helpers import is_admin, get_thread_id
-
-# Вместо отдельных файлов - импортируем из одного модуля
 from .collection_functions import (
     start_collection,
     start_test_collection,

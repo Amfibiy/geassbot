@@ -30,7 +30,7 @@ def remove_inaccessible_groups(known_groups, bot):
     
     groups_to_remove = []
     for chat_id in list(known_groups):
-        if not is_bot_admin(chat_id, bot):
+        if not is_bot_admin(chat_id):
             groups_to_remove.append(chat_id)
             print(f"❌ Группа {chat_id} недоступна")
     
