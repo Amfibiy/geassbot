@@ -6,6 +6,8 @@ import threading
 import time
 import sys
 import os
+from flask import Flask, request
+import json
 
 # Добавляем путь к проекту
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +24,7 @@ print("🚀 Запуск бота для сбора участников...")
 print(f"📁 Папка данных: {DATA_DIR}")
 
 bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
 
 # Глобальные переменные
 active_collections = {}
@@ -42,39 +45,10 @@ def check_all_groups_at_startup():
     """Проверяет группы при запуске"""
     print("🔍 Проверка групп при запуске...")
     try:
-        # ИСПРАВЛЕНО: добавил callback_query (как в монолитном коде)
-        updates = bot.get_updates(offset=0, allowed_updates=['message', 'callback_query'], limit=1000)
-        found_groups = set()
-        max_update_id = 0
-        me = bot.get_me()
-        
-        for update in updates:
-            max_update_id = max(max_update_id, update.update_id)
-            if update.message and update.message.chat.type in ['group', 'supergroup']:
-                chat = update.message.chat
-                chat_id = chat.id
-                try:
-                    bot_member = bot.get_chat_member(chat_id, me.id)
-                    if bot_member.status in ['administrator', 'creator']:
-                        found_groups.add(chat_id)
-                        print(f"✅ Бот найден в группе: {chat.title} (ID: {chat_id})")
-                except:
-                    pass
-        
-        global known_groups
-        old_count = len(known_groups)
-        known_groups.update(found_groups)
-        
-        if len(known_groups) > old_count:
-            save_known_groups(known_groups)
-            print(f"📋 Добавлено {len(known_groups) - old_count} новых групп")
-        print(f"📋 Всего известно: {len(known_groups)} групп")
-        
-        from config.settings import OFFSET_FILE
-        if max_update_id > 0:
-            with open(OFFSET_FILE, 'w') as f:
-                f.write(str(max_update_id + 1))
-                
+        # Важно: для webhook нельзя использовать get_updates
+        # Поэтому пропускаем эту проверку при webhook
+        print("⚠️ Webhook режим — пропускаем проверку групп")
+        return
     except Exception as e:
         print(f"❌ Ошибка при проверке групп: {e}")
 
@@ -86,9 +60,9 @@ def remove_inaccessible():
         save_known_groups(known_groups)
         print(f"🗑️ Удалено {deleted} недоступных групп")
 
-# Запускаем проверки
+# Запускаем проверки (только если не webhook)
 remove_inaccessible()
-check_all_groups_at_startup()
+# check_all_groups_at_startup() - пропускаем для webhook
 
 # Регистрируем все обработчики
 register_all_handlers(bot, active_collections, test_collection, 
@@ -118,11 +92,39 @@ counter_thread.start()
 
 print("✅ Бот запущен. При старте сбора отправляет 5 сообщений.")
 
-# Запускаем бота
+# ========== WEBHOOK ОБРАБОТЧИК ==========
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Принимает обновления от Telegram"""
+    try:
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '', 200
+    except Exception as e:
+        print(f"❌ Ошибка в webhook: {e}")
+        return 'Error', 500
+
+@app.route('/')
+def index():
+    """Проверка работоспособности"""
+    return 'Bot is running!', 200
+
+# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     try:
-        # Разрешаем все типы обновлений (включая callback_query)
-        bot.polling(none_stop=True, allowed_updates=None)
+        # Удаляем старый webhook
+        bot.remove_webhook()
+        # Устанавливаем новый webhook
+        webhook_url = 'https://geassbot.onrender.com/webhook'
+        bot.set_webhook(url=webhook_url, allowed_updates=['message', 'callback_query'])
+        print(f"✅ Webhook установлен на {webhook_url}")
+        
+        # Получаем порт из переменной окружения Render
+        port = int(os.environ.get('PORT', 10000))
+        
+        # Запускаем Flask
+        app.run(host='0.0.0.0', port=port)
     except Exception as e:
         print(f"❌ Критическая ошибка: {e}")
         time.sleep(5)
