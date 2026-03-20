@@ -54,15 +54,46 @@ def handle_private_text(message, bot, active_collections, test_collection,
                 from .list_functions import show_menu_periods_in_ls
                 show_menu_periods_in_ls(message, session, bot, collection_history)
             else:
-                bot.reply_to(message, "❌ Неверный номер")
+                # ИСПРАВЛЕНО: обработка ввода ID как в монолитном коде
+                target_id = number
+                found = False
+                for chat_id, name in groups:
+                    if chat_id == target_id:
+                        found = True
+                        session['chat_id'] = chat_id
+                        session['name_group'] = name
+                        session['step'] = 'choice_period'
+                        show_menu_periods_in_ls(message, session, bot, collection_history)
+                        break
+                if not found:
+                    bot.reply_to(message, "❌ Группа с таким ID не найдена")
         except:
-            bot.reply_to(message, "❌ Введите номер из списка")
+            # ИСПРАВЛЕНО: обработка ввода ID как в монолитном коде
+            try:
+                digits = ''.join(c for c in text if c.isdigit())
+                if not digits:
+                    bot.reply_to(message, "❌ Неверный формат ID")
+                    return
+                target_id = int(digits)
+                found = False
+                for chat_id, name in groups:
+                    if abs(chat_id) == target_id:
+                        found = True
+                        session['chat_id'] = chat_id
+                        session['name_group'] = name
+                        session['step'] = 'choice_period'
+                        show_menu_periods_in_ls(message, session, bot, collection_history)
+                        break
+                if not found:
+                    bot.reply_to(message, "❌ Группа с таким ID не найдена")
+            except:
+                bot.reply_to(message, "❌ Введите номер из списка или ID группы")
     
+    # ... остальные условия без изменений ...
     elif session.get('step') == 'choice_period':
         try:
             number = int(text)
             from .list_functions import handle_period_callback
-            # Создаём временный callback для обработки
             class TempCall:
                 def __init__(self, msg, num):
                     self.data = f"period_{num}"

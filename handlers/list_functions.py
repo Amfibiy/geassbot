@@ -116,6 +116,10 @@ def show_menu_of_choice_group_in_ls(message, user_id, bot, known_groups, active_
                 name = chat.title if chat.title else f"Группа {chat_id}"
                 available_groups.append((chat_id, name))
         except:
+            if chat_id in known_groups:
+                known_groups.remove(chat_id)
+                from database.groups import save_known_groups
+                save_known_groups(known_groups)
             continue
     
     all_chats = set(collection_history.keys()) | set(active_collections.keys()) | set(test_collection.keys())
