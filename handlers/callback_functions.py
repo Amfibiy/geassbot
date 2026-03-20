@@ -54,7 +54,6 @@ def handle_private_text(message, bot, active_collections, test_collection,
                 from .list_functions import show_menu_periods_in_ls
                 show_menu_periods_in_ls(message, session, bot, collection_history)
             else:
-                # ИСПРАВЛЕНО: обработка ввода ID как в монолитном коде
                 target_id = number
                 found = False
                 for chat_id, name in groups:
@@ -68,7 +67,6 @@ def handle_private_text(message, bot, active_collections, test_collection,
                 if not found:
                     bot.reply_to(message, "❌ Группа с таким ID не найдена")
         except:
-            # ИСПРАВЛЕНО: обработка ввода ID как в монолитном коде
             try:
                 digits = ''.join(c for c in text if c.isdigit())
                 if not digits:
@@ -89,20 +87,83 @@ def handle_private_text(message, bot, active_collections, test_collection,
             except:
                 bot.reply_to(message, "❌ Введите номер из списка или ID группы")
     
-    # ... остальные условия без изменений ...
     elif session.get('step') == 'choice_period':
         try:
             number = int(text)
-            from .list_functions import handle_period_callback
-            class TempCall:
-                def __init__(self, msg, num):
-                    self.data = f"period_{num}"
-                    self.message = msg
-                    self.id = "temp"
-            handle_period_callback(TempCall(message, number), bot, active_collections,
-                                 test_collection, collection_history, known_groups, user_sessions)
+            chat_id = session['chat_id']
+            periods = {
+                1: ('текущий', None),
+                2: ('день', None),
+                3: ('вчера', None),
+                4: ('неделя', None),
+                5: ('месяц', None),
+                6: ('квартал', None),
+                7: ('год', None),
+                8: ('всё', None),
+                9: ('ожидание_периода', None)
+            }
+            if number in periods:
+                period, additional = periods[number]
+                if period == "текущий":
+                    if chat_id in active_collections:
+                        collect = active_collections[chat_id]
+                        from .list_functions import show_current_collection_in_group
+                        show_current_collection_in_group(message, collect, bot)
+                    else:
+                        bot.reply_to(message, "📭 Нет активного сбора")
+                elif period == 'вчера':
+                    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+                    date_str = yesterday.strftime('%d-%m-%Y')
+                    begin = yesterday.replace(hour=0, minute=0, second=0).timestamp()
+                    end = begin + 86400
+                    all_participants = []
+                    if chat_id in collection_history:
+                        for record in collection_history[chat_id]:
+                            if begin <= record['end_time'] <= end:
+                                all_participants.extend(record['participants'])
+                    if not all_participants:
+                        bot.reply_to(message, f"📭 Нет участников за {date_str}")
+                    else:
+                        from .list_functions import show_result_at_date
+                        show_result_at_date(message, chat_id, all_participants, date_str, session, bot, collection_history)
+                    session['step'] = 'choice_period'
+                    from .list_functions import show_menu_periods_in_ls
+                    show_menu_periods_in_ls(message, session, bot, collection_history)
+                elif period == 'ожидание_периода':
+                    session['step'] = 'input_period'
+                    bot.reply_to(message, "📅 Введите период (ДД-ММ-ГГГГ - ДД-ММ-ГГГГ)")
+                else:
+                    from .list_functions import show_period_in_ls
+                    show_period_in_ls(message, chat_id, period, session, bot, collection_history)
+            else:
+                bot.reply_to(message, "❌ Введите номер периода")
         except:
             bot.reply_to(message, "❌ Введите номер периода")
+    
+    elif session.get('step') == 'input_date':
+        chat_id = session['chat_id']
+        try:
+            date = validate_date(text)
+            if date:
+                begin = date.timestamp()
+                end = begin + 86400
+                all_participants = []
+                if chat_id in collection_history:
+                    for record in collection_history[chat_id]:
+                        if begin <= record['end_time'] <= end:
+                            all_participants.extend(record['participants'])
+                if not all_participants:
+                    bot.reply_to(message, f"📭 Нет участников за {text}")
+                else:
+                    from .list_functions import show_result_at_date
+                    show_result_at_date(message, chat_id, all_participants, text, session, bot, collection_history)
+                session['step'] = "choice_period"
+                from .list_functions import show_menu_periods_in_ls
+                show_menu_periods_in_ls(message, session, bot, collection_history)
+            else:
+                bot.reply_to(message, "❌ Неверный формат. Используйте ДД-ММ-ГГГГ")
+        except:
+            bot.reply_to(message, "❌ Неверный формат. Используйте ДД-ММ-ГГГГ")
     
     elif session.get('step') == 'choice_group_clean':
         groups = session['groups']
@@ -135,22 +196,32 @@ def handle_private_text(message, bot, active_collections, test_collection,
     elif session.get('step') == 'choice_action_clean':
         try:
             number = int(text)
-            if number == 6:
-                session['step'] = 'input_date_clean'
-                bot.reply_to(message, "📅 Введите дату для удаления (ДД-ММ-ГГГГ)")
-            elif number == 7:
-                session['step'] = 'input_period_clean'
-                bot.reply_to(message, "📅 Введите период (ДД-ММ-ГГГГ - ДД-ММ-ГГГГ)")
-            else:
-                action_map = {1: 'всё', 2: 'сегодня', 3: 'вчера', 4: 'неделя', 5: 'месяц'}
-                if number in action_map:
-                    session['wait'] = {'type': action_map[number], 'parameter': None}
+            chat_id = session['chat_id']
+            action = {
+                1: ('всё', None),
+                2: ('сегодня', None),
+                3: ('вчера', None),
+                4: ('неделя', None),
+                5: ('месяц', None),
+                6: ('ожидание_даты_очистки', None),
+                7: ('ожидание_периода_очистки', None)
+            }
+            if number in action:
+                action_type, additional = action[number]
+                if action_type == 'ожидание_даты_очистки':
+                    session['step'] = 'input_date_clean'
+                    bot.reply_to(message, "📅 Введите дату для удаления (ДД-ММ-ГГГГ)")
+                elif action_type == 'ожидание_периода_очистки':
+                    session['step'] = 'input_period_clean'
+                    bot.reply_to(message, "📅 Введите период (ДД-ММ-ГГГГ - ДД-ММ-ГГГГ)")
+                else:
+                    session['wait'] = {'type': action_type, 'parameter': None}
                     session['step'] = 'confirmation_clean'
-                    bot.reply_to(message, f"⚠️ Удалить {action_map[number]}?\n"
+                    bot.reply_to(message, f"⚠️ Удалить {action_type}?\n"
                         f"✅ да\n"
                         f"❌ нет")
-                else:
-                    bot.reply_to(message, "❌ Введите число от 1 до 7")
+            else:
+                bot.reply_to(message, "❌ Введите число от 1 до 7")
         except:
             bot.reply_to(message, "❌ Введите номер действия")
     
@@ -183,6 +254,7 @@ def handle_private_text(message, bot, active_collections, test_collection,
         del user_sessions[user_id]
     
     elif session.get('step') == 'input_period':
+        chat_id = session['chat_id']
         try:
             parts = text.split('-')
             if len(parts) >= 6:
@@ -195,14 +267,11 @@ def handle_private_text(message, bot, active_collections, test_collection,
                 if date1 and date2:
                     begin = date1.timestamp()
                     end = date2.timestamp() + 86400
-                    chat_id = session['chat_id']
                     all_participants = []
-                    
                     if chat_id in collection_history:
                         for record in collection_history[chat_id]:
                             if begin <= record['end_time'] <= end:
                                 all_participants.extend(record['participants'])
-                    
                     if not all_participants:
                         bot.reply_to(message, f"📭 Нет участников с {date1_str} по {date2_str}")
                     else:
@@ -215,33 +284,6 @@ def handle_private_text(message, bot, active_collections, test_collection,
                 else:
                     bot.reply_to(message, "❌ Неверный формат дат")
             else:
-                bot.reply_to(message, "❌ Неверный формат. Используйте ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
+                bot.reply_to(message, f"❌ Неверный формат. Используйте ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
         except Exception as e:
-            bot.reply_to(message, f"❌ Ошибка: {e}")
-
-def show_result_by_date(message, chat_id, participants, date1_str, date2_str, session, bot, collection_history):
-    unique = {}
-    for member in participants:
-        uid = member['id']
-        name = f"@{member['username']}" if member.get('username') else member.get('name', 'Неизвестно')
-        if uid not in unique:
-            unique[uid] = {'name': name, 'quantity': 1}
-        else:
-            unique[uid]['quantity'] += 1
-    
-    report = f"📊 *{session['name_group']}* с {date1_str} по {date2_str}:\n"
-    report += f"👥 Участников: {len(unique)}\n"
-    report += f"🔄 Участий: {len(participants)}\n\n"
-
-    sorted_items = sorted(unique.items(), key=lambda x: x[1]['quantity'], reverse=True)
-    for _, data in sorted_items[:30]:
-        report += f"• {data['name']}"
-        if data['quantity'] > 1:
-            report += f" ({data['quantity']} раз)"
-        report += '\n'
-    if len(sorted_items) > 30:
-        report += f"... и ещё {len(sorted_items) - 30}"
-    
-    bot.reply_to(message, report, parse_mode='Markdown')
-    from .list_functions import show_menu_periods_in_ls
-    show_menu_periods_in_ls(message, session, bot, collection_history)
+            bot.reply_to(message, f"❌ Неверный формат. Используйте ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
