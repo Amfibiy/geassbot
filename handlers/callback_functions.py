@@ -1,6 +1,8 @@
 from database.groups import save_known_groups
 from utils.validators import validate_date, validate_id
 from utils.helpers import is_admin
+import datetime
+import time
 
 def handle_my_chat_member(update, bot, active_collections, test_collection,
                           collection_history, known_groups, user_sessions):
@@ -62,6 +64,7 @@ def handle_private_text(message, bot, active_collections, test_collection,
                         session['chat_id'] = chat_id
                         session['name_group'] = name
                         session['step'] = 'choice_period'
+                        from .list_functions import show_menu_periods_in_ls
                         show_menu_periods_in_ls(message, session, bot, collection_history)
                         break
                 if not found:
@@ -80,6 +83,7 @@ def handle_private_text(message, bot, active_collections, test_collection,
                         session['chat_id'] = chat_id
                         session['name_group'] = name
                         session['step'] = 'choice_period'
+                        from .list_functions import show_menu_periods_in_ls
                         show_menu_periods_in_ls(message, session, bot, collection_history)
                         break
                 if not found:
@@ -126,7 +130,6 @@ def handle_private_text(message, bot, active_collections, test_collection,
                     else:
                         from .list_functions import show_result_at_date
                         show_result_at_date(message, chat_id, all_participants, date_str, session, bot, collection_history)
-                    session['step'] = 'choice_period'
                     from .list_functions import show_menu_periods_in_ls
                     show_menu_periods_in_ls(message, session, bot, collection_history)
                 elif period == 'ожидание_периода':
