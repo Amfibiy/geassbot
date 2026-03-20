@@ -7,7 +7,6 @@ import time
 import sys
 import os
 from flask import Flask, request
-import json
 
 # Добавляем путь к проекту
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -45,12 +44,42 @@ def check_all_groups_at_startup():
     """Проверяет группы при запуске"""
     print("🔍 Проверка групп при запуске...")
     try:
-        # Важно: для webhook нельзя использовать get_updates
-        # Поэтому пропускаем эту проверку при webhook
-        print("⚠️ Webhook режим — пропускаем проверку групп")
-        return
+        # Используем get_updates с правильными allowed_updates
+        updates = bot.get_updates(offset=0, allowed_updates=['message', 'callback_query'], limit=1000)
+        found_groups = set()
+        max_update_id = 0
+        me = bot.get_me()
+        
+        for update in updates:
+            max_update_id = max(max_update_id, update.update_id)
+            if update.message and update.message.chat.type in ['group', 'supergroup']:
+                chat = update.message.chat
+                chat_id = chat.id
+                try:
+                    bot_member = bot.get_chat_member(chat_id, me.id)
+                    if bot_member.status in ['administrator', 'creator']:
+                        found_groups.add(chat_id)
+                        print(f"✅ Бот найден в группе: {chat.title} (ID: {chat_id})")
+                except:
+                    pass
+        
+        global known_groups
+        old_count = len(known_groups)
+        known_groups.update(found_groups)
+        
+        if len(known_groups) > old_count:
+            save_known_groups(known_groups)
+            print(f"📋 Добавлено {len(known_groups) - old_count} новых групп")
+        print(f"📋 Всего известно: {len(known_groups)} групп")
+        
+        from config.settings import OFFSET_FILE
+        if max_update_id > 0:
+            with open(OFFSET_FILE, 'w') as f:
+                f.write(str(max_update_id + 1))
+                
     except Exception as e:
         print(f"❌ Ошибка при проверке групп: {e}")
+        print("⚠️ Возможно, webhook уже активен. Продолжаем без проверки групп.")
 
 def remove_inaccessible():
     """Удаляет недоступные группы"""
@@ -60,9 +89,12 @@ def remove_inaccessible():
         save_known_groups(known_groups)
         print(f"🗑️ Удалено {deleted} недоступных групп")
 
-# Запускаем проверки (только если не webhook)
-remove_inaccessible()
-# check_all_groups_at_startup() - пропускаем для webhook
+# Запускаем проверки (если нет ошибки 409, они сработают)
+try:
+    remove_inaccessible()
+    check_all_groups_at_startup()
+except Exception as e:
+    print(f"⚠️ Ошибка при проверке групп (продолжаем): {e}")
 
 # Регистрируем все обработчики
 register_all_handlers(bot, active_collections, test_collection, 
