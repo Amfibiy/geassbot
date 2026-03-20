@@ -42,7 +42,8 @@ def check_all_groups_at_startup():
     """Проверяет группы при запуске"""
     print("🔍 Проверка групп при запуске...")
     try:
-        updates = bot.get_updates(offset=0, allowed_updates=['message'], limit=1000)
+        # ИСПРАВЛЕНО: убрал allowed_updates=['message']
+        updates = bot.get_updates(offset=0, limit=1000)
         found_groups = set()
         max_update_id = 0
         me = bot.get_me()
