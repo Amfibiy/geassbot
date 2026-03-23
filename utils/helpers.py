@@ -12,22 +12,16 @@ def get_thread_id(message):
     return message.message_thread_id if hasattr(message, 'message_thread_id') else None
 
 def is_admin(chat_id, user_id):
-    """Проверяет, является ли пользователь администратором"""
-    global known_groups, bot
     try:
         member = bot.get_chat_member(chat_id, user_id)
         if known_groups is not None and chat_id not in known_groups:
             known_groups.add(chat_id)
             save_known_groups(known_groups)
-            print(f"✅ Группа {chat_id} добавлена в known_groups через is_admin()")
+            print(f"✅ Группа {chat_id} добавлена")
         return member.status in ['creator', 'administrator']
     except Exception:
-        if known_groups is not None and chat_id in known_groups:
-            known_groups.remove(chat_id)
-            save_known_groups(known_groups)
-            print(f"❌ Группа {chat_id} удалена из known_groups (недоступна)")
         return False
-
+    
 def is_bot_admin(chat_id):
     """Проверяет, является ли бот администратором в группе"""
     global bot
