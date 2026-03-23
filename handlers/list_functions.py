@@ -32,10 +32,13 @@ def show_current_collection_in_group(message, collect, bot):
 *Список участников:*\n"""
     
     for p in collect['participants'][:20]:
-        # Экранируем имя для Markdown
-        name = p.get('username') or p.get('name', 'Неизвестно')
-        safe_name = escape_markdown(name)
-        text += f"• {safe_name}\n"
+        if p.get('username'):
+            # username не экранируем, чтобы оставался кликабельным
+            name = f"@{p['username']}"
+        else:
+            # обычное имя экранируем от спецсимволов
+            name = escape_markdown(p.get('name', 'Неизвестно'))
+        text += f"• {name}\n"
     
     if len(collect['participants']) > 20:
         text += f"... и ещё {len(collect['participants']) - 20}"
@@ -94,11 +97,12 @@ def show_period_in_ls(message, chat_id, period, session, bot, collection_history
     unique = {}
     for member in all_participants:
         uid = member['id']
-        name_display = f"@{member['username']}" if member.get('username') else member.get('name', 'Неизвестно')
-        # Экранируем имя для Markdown
-        safe_name = escape_markdown(name_display)
+        if member.get('username'):
+            name_display = f"@{member['username']}"
+        else:
+            name_display = escape_markdown(member.get('name', 'Неизвестно'))
         if uid not in unique:
-            unique[uid] = {'name': safe_name, 'quantity': 1}
+            unique[uid] = {'name': name_display, 'quantity': 1}
         else:
             unique[uid]['quantity'] += 1
     
