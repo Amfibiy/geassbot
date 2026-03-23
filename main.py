@@ -148,7 +148,7 @@ if __name__ == "__main__":
         # Удаляем старый webhook
         bot.remove_webhook()
         # Устанавливаем новый webhook
-        webhook_url = 'https://geassbot.onrender.com/webhook'
+        webhook_url = 'https://geassbot-1.onrender.com/webhook'
         bot.set_webhook(url=webhook_url, allowed_updates=['message', 'callback_query'])
         print(f"✅ Webhook установлен на {webhook_url}")
         
