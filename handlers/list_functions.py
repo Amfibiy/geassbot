@@ -3,6 +3,13 @@ import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from utils.helpers import is_admin
 
+def escape_markdown(text):
+    """Экранирует спецсимволы для Markdown"""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    for char in escape_chars:
+        text = text.replace(char, '\\' + char)
+    return text
+
 def show_current_collection_in_group(message, collect, bot):
     quantity = len(collect['participants'])
     passed = time.time() - collect['start_time']
@@ -25,8 +32,11 @@ def show_current_collection_in_group(message, collect, bot):
 *Список участников:*\n"""
     
     for p in collect['participants'][:20]:
-        name = f"@{p['username']}" if p.get('username') else p['name']
-        text += f"• {name}\n"
+        # Экранируем имя для Markdown
+        name = p.get('username') or p.get('name', 'Неизвестно')
+        safe_name = escape_markdown(name)
+        text += f"• {safe_name}\n"
+    
     if len(collect['participants']) > 20:
         text += f"... и ещё {len(collect['participants']) - 20}"
     
@@ -85,12 +95,14 @@ def show_period_in_ls(message, chat_id, period, session, bot, collection_history
     for member in all_participants:
         uid = member['id']
         name_display = f"@{member['username']}" if member.get('username') else member.get('name', 'Неизвестно')
+        # Экранируем имя для Markdown
+        safe_name = escape_markdown(name_display)
         if uid not in unique:
-            unique[uid] = {'name': name_display, 'quantity': 1}
+            unique[uid] = {'name': safe_name, 'quantity': 1}
         else:
             unique[uid]['quantity'] += 1
     
-    report = f"📊 *{session['name_group']}* за {name}:\n"
+    report = f"📊 *{escape_markdown(session['name_group'])}* за {name}:\n"
     report += f"👥 Участников: {len(unique)}\n"
     report += f"🔄 Участий: {len(all_participants)}\n\n"
     
@@ -150,7 +162,9 @@ def show_menu_of_choice_group_in_ls(message, user_id, bot, known_groups, active_
 
     for index, (chat_id, name) in enumerate(available_groups, 1):
         status = "🟢" if chat_id in active_collections else "⚪"
-        text += f"{index}. {status} {name}\n"
+        # Экранируем имя группы для HTML
+        safe_name = name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        text += f"{index}. {status} {safe_name}\n"
         text += f"   🆔 <code>{chat_id}</code>\n\n"
     
     text += "👇 <b>Отправьте номер группы</b> (1, 2, 3...)\n"
@@ -188,7 +202,9 @@ def show_menu_periods_in_ls(message, session, bot, collection_history):
     for record in collection_history.get(chat_id, []):
         total_participants += record.get('total_participants', len(record.get('participants', [])))
     
-    text = f"""📋 <b>Группа: {name}</b>
+    # Экранируем имя для HTML
+    safe_name = name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    text = f"""📋 <b>Группа: {safe_name}</b>
 
 📊 <b>Статистика:</b>
 • Всего сборов: {total_collections}
