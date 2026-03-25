@@ -33,10 +33,10 @@ def show_current_collection_in_group(message, collect, bot):
     
     for p in collect['participants'][:20]:
         if p.get('username'):
-            # username не экранируем, чтобы оставался кликабельным
-            name = f"@{p['username']}"
+            # Экранируем username (может содержать _, *, и т.д.)
+            name = escape_markdown(f"@{p['username']}")
         else:
-            # обычное имя экранируем от спецсимволов
+            # обычное имя экранируем
             name = escape_markdown(p.get('name', 'Неизвестно'))
         text += f"• {name}\n"
     
@@ -98,7 +98,7 @@ def show_period_in_ls(message, chat_id, period, session, bot, collection_history
     for member in all_participants:
         uid = member['id']
         if member.get('username'):
-            name_display = f"@{member['username']}"
+            name_display = escape_markdown(f"@{member['username']}")
         else:
             name_display = escape_markdown(member.get('name', 'Неизвестно'))
         if uid not in unique:
