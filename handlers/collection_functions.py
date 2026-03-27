@@ -57,7 +57,7 @@ def create_counter_message(count, time_left):
     keyboard.add(InlineKeyboardButton(button_text, callback_data="join"))
     return text, keyboard
 
-def notify_all_members(bot, chat_id, collection, admin_name):
+def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
     """Уведомляет всех участников группы о начале сбора"""
     try:
         # Получаем участников группы (максимум 200, чтобы не превысить лимит)
@@ -80,14 +80,19 @@ def notify_all_members(bot, chat_id, collection, admin_name):
         if not mentions:
             return
         
+        # Выбираем заголовок в зависимости от типа сбора
+        if is_test:
+            header = f"🧪 *ТЕСТОВЫЙ СБОР!* Администратор {admin_name} запускает тестовый сбор участников!\n\n"
+        else:
+            header = f"🔔 *ВНИМАНИЕ!* Администратор {admin_name} запускает сбор участников!\n\n"
+        
         # Разбиваем на части (Telegram ограничение на длину сообщения)
         chunk_size = 50
         thread_id = collection.get('thread_id')
         
         for i in range(0, len(mentions), chunk_size):
             chunk = mentions[i:i + chunk_size]
-            mention_text = f"🔔 *Внимание!* Администратор {admin_name} запускает сбор участников!\n\n"
-            mention_text += "Присоединяйтесь: " + ", ".join(chunk)
+            mention_text = header + "Присоединяйтесь: " + ", ".join(chunk)
             
             try:
                 bot.send_message(
@@ -169,7 +174,7 @@ def start_collection(message, bot, active_collections, test_collection,
     active_collections[chat_id]["counter_message_id"] = counter_message.message_id
     
     # Уведомляем всех участников группы
-    notify_all_members(bot, chat_id, active_collections[chat_id], admin_name)
+    notify_all_members(bot, chat_id, active_collections[chat_id], admin_name, is_test=False)
     
     bot.reply_to(message, "✅ Сбор начат!")
 
@@ -264,6 +269,10 @@ def start_test_collection(message, bot, active_collections, test_collection,
         finish_collection(chat_id, bot, active_collections, test_collection, 
                          collection_history, silent=True, is_test=True)
     
+    admin_name = message.from_user.first_name
+    if message.from_user.username:
+        admin_name = f"@{message.from_user.username}"
+    
     test_collection[chat_id] = {
         'participants': [],
         'start_time': time.time(),
@@ -281,7 +290,7 @@ def start_test_collection(message, bot, active_collections, test_collection,
     start_msg = bot.send_message(
         chat_id=chat_id,
         message_thread_id=thread_id,
-        text="🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут",
+        text="🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут\n👇 Нажмите для теста",
         parse_mode="Markdown"
     )
     test_collection[chat_id]['start_message_id'] = start_msg.message_id
@@ -294,6 +303,10 @@ def start_test_collection(message, bot, active_collections, test_collection,
         parse_mode="Markdown"
     )
     test_collection[chat_id]['counter_message_id'] = counter_msg.message_id
+    
+    # Уведомляем всех участников группы о тестовом сборе
+    notify_all_members(bot, chat_id, test_collection[chat_id], admin_name, is_test=True)
+    
     bot.reply_to(message, "🧪 Тестовый сбор запущен!")
 
 def stop_collection(message, bot, active_collections, test_collection,
