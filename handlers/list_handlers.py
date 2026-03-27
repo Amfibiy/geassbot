@@ -2,12 +2,18 @@ from .list_functions import (
     show_participants_list,
     handle_period_callback
 )
+from utils.helpers import is_admin
 
 def register_list_handlers(bot, active_collections, test_collection,
                            collection_history, known_groups, user_sessions):
     
     @bot.message_handler(commands=['list'])
     def handle_list(message):
+        # Проверка на админа ТОЛЬКО в группе
+        if message.chat.type != "private":
+            if not is_admin(message.chat.id, message.from_user.id):
+                bot.reply_to(message, "❌ Только для администраторов группы")
+                return
         show_participants_list(message, bot, active_collections, test_collection,
                               collection_history, known_groups, user_sessions)
     
