@@ -60,18 +60,16 @@ def create_counter_message(count, time_left):
 def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
     """Уведомляет всех участников группы о начале сбора"""
     try:
-        # Получаем участников группы (максимум 200, чтобы не превысить лимит)
         members = bot.get_chat_members(chat_id, limit=200)
         
         if not members:
             print("⚠️ Не удалось получить список участников")
             return
         
-        # Формируем список упоминаний
         mentions = []
         for member in members:
             user = member.user
-            if not user.is_bot:  # Не уведомляем ботов
+            if not user.is_bot:
                 if user.username:
                     mentions.append(f"@{user.username}")
                 else:
@@ -80,13 +78,11 @@ def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
         if not mentions:
             return
         
-        # Выбираем заголовок в зависимости от типа сбора
         if is_test:
             header = f"🧪 *ТЕСТОВЫЙ СБОР!* Администратор {admin_name} запускает тестовый сбор участников!\n\n"
         else:
             header = f"🔔 *ВНИМАНИЕ!* Администратор {admin_name} запускает сбор участников!\n\n"
         
-        # Разбиваем на части (Telegram ограничение на длину сообщения)
         chunk_size = 50
         thread_id = collection.get('thread_id')
         
@@ -101,7 +97,7 @@ def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
                     text=mention_text,
                     parse_mode="Markdown"
                 )
-                time.sleep(0.5)  # Небольшая пауза, чтобы не спамить
+                time.sleep(0.5)
             except Exception as e:
                 print(f"❌ Ошибка при отправке уведомления: {e}")
         
@@ -173,7 +169,6 @@ def start_collection(message, bot, active_collections, test_collection,
     )
     active_collections[chat_id]["counter_message_id"] = counter_message.message_id
     
-    # Уведомляем всех участников группы
     notify_all_members(bot, chat_id, active_collections[chat_id], admin_name, is_test=False)
     
     bot.reply_to(message, "✅ Сбор начат!")
@@ -304,7 +299,6 @@ def start_test_collection(message, bot, active_collections, test_collection,
     )
     test_collection[chat_id]['counter_message_id'] = counter_msg.message_id
     
-    # Уведомляем всех участников группы о тестовом сборе
     notify_all_members(bot, chat_id, test_collection[chat_id], admin_name, is_test=True)
     
     bot.reply_to(message, "🧪 Тестовый сбор запущен!")
