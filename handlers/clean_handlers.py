@@ -4,11 +4,13 @@ from .clean_functions import (
     handle_clean_action_callback,
     handle_confirm_callback
 )
+from utils.helpers import admin_only
 
 def register_clean_handlers(bot, active_collections, test_collection,
                             collection_history, known_groups, user_sessions):
     
     @bot.message_handler(commands=['clean'])
+    @admin_only
     def handle_clean_command(message):
         handle_clean(message, bot, active_collections, test_collection,
                     collection_history, known_groups, user_sessions)
