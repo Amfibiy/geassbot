@@ -4,14 +4,16 @@ from .clean_functions import (
     handle_clean_action_callback,
     handle_confirm_callback
 )
-from utils.helpers import admin_only
+from utils.helpers import is_admin
 
 def register_clean_handlers(bot, active_collections, test_collection,
                             collection_history, known_groups, user_sessions):
     
     @bot.message_handler(commands=['clean'])
-    @admin_only
     def handle_clean_command(message):
+        if not is_admin(message.chat.id, message.from_user.id):
+            bot.reply_to(message, "❌ Только для администраторов группы")
+            return
         handle_clean(message, bot, active_collections, test_collection,
                     collection_history, known_groups, user_sessions)
     

@@ -20,16 +20,8 @@ def is_admin(chat_id, user_id):
             print(f"✅ Группа {chat_id} добавлена")
         return member.status in ['creator', 'administrator']
     except Exception:
+        # НЕ удаляем группу из known_groups
         return False
-
-def admin_only(func):
-    """Декоратор для команд, доступных только админам"""
-    def wrapper(message, *args, **kwargs):
-        if not is_admin(message.chat.id, message.from_user.id):
-            bot.reply_to(message, "❌ Только для администраторов группы")
-            return
-        return func(message, *args, **kwargs)
-    return wrapper
 
 def is_bot_admin(chat_id):
     """Проверяет, является ли бот администратором в группе"""
