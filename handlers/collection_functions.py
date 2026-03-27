@@ -57,6 +57,54 @@ def create_counter_message(count, time_left):
     keyboard.add(InlineKeyboardButton(button_text, callback_data="join"))
     return text, keyboard
 
+def notify_all_members(bot, chat_id, collection, admin_name):
+    """Уведомляет всех участников группы о начале сбора"""
+    try:
+        # Получаем участников группы (максимум 200, чтобы не превысить лимит)
+        members = bot.get_chat_members(chat_id, limit=200)
+        
+        if not members:
+            print("⚠️ Не удалось получить список участников")
+            return
+        
+        # Формируем список упоминаний
+        mentions = []
+        for member in members:
+            user = member.user
+            if not user.is_bot:  # Не уведомляем ботов
+                if user.username:
+                    mentions.append(f"@{user.username}")
+                else:
+                    mentions.append(user.first_name)
+        
+        if not mentions:
+            return
+        
+        # Разбиваем на части (Telegram ограничение на длину сообщения)
+        chunk_size = 50
+        thread_id = collection.get('thread_id')
+        
+        for i in range(0, len(mentions), chunk_size):
+            chunk = mentions[i:i + chunk_size]
+            mention_text = f"🔔 *Внимание!* Администратор {admin_name} запускает сбор участников!\n\n"
+            mention_text += "Присоединяйтесь: " + ", ".join(chunk)
+            
+            try:
+                bot.send_message(
+                    chat_id=chat_id,
+                    message_thread_id=thread_id,
+                    text=mention_text,
+                    parse_mode="Markdown"
+                )
+                time.sleep(0.5)  # Небольшая пауза, чтобы не спамить
+            except Exception as e:
+                print(f"❌ Ошибка при отправке уведомления: {e}")
+        
+        print(f"✅ Отправлено уведомление {len(mentions)} участникам")
+        
+    except Exception as e:
+        print(f"❌ Ошибка при получении участников: {e}")
+
 def start_collection(message, bot, active_collections, test_collection,
                      collection_history, known_groups, user_sessions):
     if not is_admin(message.chat.id, message.from_user.id):
@@ -90,6 +138,10 @@ def start_collection(message, bot, active_collections, test_collection,
         bot.reply_to(message, status_text, parse_mode="Markdown")
         return
 
+    admin_name = message.from_user.first_name
+    if message.from_user.username:
+        admin_name = f"@{message.from_user.username}"
+    
     active_collections[chat_id] = {
         'participants': [],
         'start_time': time.time(),
@@ -97,9 +149,10 @@ def start_collection(message, bot, active_collections, test_collection,
         'start_message_id': None,
         'smile_message_ids': [],
         'admin_id': message.from_user.id,
-        'admin_name': message.from_user.first_name,
+        'admin_name': admin_name,
         'admin_username': message.from_user.username or "",
-        'is_test': False
+        'is_test': False,
+        'thread_id': get_thread_id(message)
     }
     
     thread_id = get_thread_id(message)
@@ -114,6 +167,10 @@ def start_collection(message, bot, active_collections, test_collection,
         parse_mode="Markdown"
     )
     active_collections[chat_id]["counter_message_id"] = counter_message.message_id
+    
+    # Уведомляем всех участников группы
+    notify_all_members(bot, chat_id, active_collections[chat_id], admin_name)
+    
     bot.reply_to(message, "✅ Сбор начат!")
 
 def finish_collection(chat_id, bot, active_collections, test_collection, 
@@ -214,7 +271,8 @@ def start_test_collection(message, bot, active_collections, test_collection,
         'start_message_id': None,
         'smile_message_ids': [],
         'admin_id': message.from_user.id,
-        'is_test': True
+        'is_test': True,
+        'thread_id': get_thread_id(message)
     }
     
     thread_id = get_thread_id(message)
