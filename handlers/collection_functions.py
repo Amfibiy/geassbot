@@ -5,6 +5,7 @@ from utils.helpers import is_admin, get_thread_id
 from config.settings import COLLECTION_DURATION
 from database.history import save_history
 
+sys.stderr = sys.stdout 
 def log_to_stderr(msg):
     """Логирование в stderr для Render"""
     print(msg, file=sys.stderr)
