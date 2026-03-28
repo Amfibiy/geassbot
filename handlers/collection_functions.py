@@ -132,14 +132,6 @@ def create_counter_message(count, time_left):
 
 def start_collection(message, bot, active_collections, test_collection,
                      collection_history, known_groups, user_sessions):
-    
-    # САМАЯ ПЕРВАЯ ДИАГНОСТИКА — отправляем сообщение в чат
-    try:
-        bot.send_message(message.chat.id, "🔵 Диагностика: start_collection вызвана!")
-    except Exception as e:
-        print(f"❌ Критическая ошибка: {e}")
-        return
-    
     if not is_admin(message.chat.id, message.from_user.id):
         bot.reply_to(message, "❌ Только для админов")
         return
