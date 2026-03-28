@@ -10,6 +10,10 @@ def escape_markdown(text):
         text = text.replace(char, '\\' + char)
     return text
 
+def escape_html(text):
+    """Экранирует спецсимволы для HTML"""
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
 def show_current_collection_in_group(message, collect, bot):
     quantity = len(collect['participants'])
     passed = time.time() - collect['start_time']
@@ -33,10 +37,8 @@ def show_current_collection_in_group(message, collect, bot):
     
     for p in collect['participants'][:20]:
         if p.get('username'):
-            # Экранируем username (может содержать _, *, и т.д.)
             name = escape_markdown(f"@{p['username']}")
         else:
-            # обычное имя экранируем
             name = escape_markdown(p.get('name', 'Неизвестно'))
         text += f"• {name}\n"
     
@@ -162,24 +164,29 @@ def show_menu_of_choice_group_in_ls(message, user_id, bot, known_groups, active_
         return
     
     available_groups.sort(key=lambda x: x[1])
+    
+    # Создаём клавиатуру с кнопками групп
+    keyboard = InlineKeyboardMarkup(row_width=1)
     text = "📋 <b>Выберите группу для просмотра:</b>\n\n"
-
+    
     for index, (chat_id, name) in enumerate(available_groups, 1):
         status = "🟢" if chat_id in active_collections else "⚪"
-        # Экранируем имя группы для HTML
-        safe_name = name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        safe_name = escape_html(name)
         text += f"{index}. {status} {safe_name}\n"
         text += f"   🆔 <code>{chat_id}</code>\n\n"
+        keyboard.add(InlineKeyboardButton(
+            f"{index}. {name}",
+            callback_data=f"list_group_{chat_id}"
+        ))
     
-    text += "👇 <b>Отправьте номер группы</b> (1, 2, 3...)\n"
-    text += "или введите ID группы вручную"
+    text += "👇 <b>Нажмите на группу</b> или отправьте номер/ID"
 
     user_sessions[user_id] = {
         'groups': available_groups,
         'step': 'choice_group'
     }
     
-    bot.reply_to(message, text, parse_mode="HTML")
+    bot.send_message(message.chat.id, text, reply_markup=keyboard, parse_mode="HTML")
 
 def show_menu_periods_in_ls(message, session, bot, collection_history):
     chat_id = session['chat_id']
@@ -198,16 +205,15 @@ def show_menu_periods_in_ls(message, session, bot, collection_history):
         ("9️⃣ Свой период", "period_9")
     ]
 
-    for text, data in buttons:
-        keyboard.add(InlineKeyboardButton(text, callback_data=data))
+    for btn_text, data in buttons:
+        keyboard.add(InlineKeyboardButton(btn_text, callback_data=data))
     
     total_collections = len(collection_history.get(chat_id, []))
     total_participants = 0
     for record in collection_history.get(chat_id, []):
         total_participants += record.get('total_participants', len(record.get('participants', [])))
     
-    # Экранируем имя для HTML
-    safe_name = name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    safe_name = escape_html(name)
     text = f"""📋 <b>Группа: {safe_name}</b>
 
 📊 <b>Статистика:</b>
@@ -239,6 +245,32 @@ def show_participants_list(message, bot, active_collections, test_collection,
         return
     
     show_menu_of_choice_group_in_ls(message, user_id, bot, known_groups, active_collections, test_collection, collection_history, user_sessions)
+
+def handle_list_group_callback(call, bot, active_collections, test_collection,
+                                collection_history, known_groups, user_sessions):
+    user_id = call.from_user.id
+    session = user_sessions.get(user_id)
+    if not session or session.get('step') != 'choice_group':
+        bot.answer_callback_query(call.id, "❌ Сессия устарела. Начните заново с /list")
+        return
+    
+    chat_id = int(call.data.replace('list_group_', ''))
+    name = None
+    for cid, n in session['groups']:
+        if cid == chat_id:
+            name = n
+            break
+    
+    if not name:
+        bot.answer_callback_query(call.id, "❌ Группа не найдена")
+        return
+    
+    session['chat_id'] = chat_id
+    session['name_group'] = name
+    session['step'] = 'choice_period'
+    
+    show_menu_periods_in_ls(call.message, session, bot, collection_history)
+    bot.answer_callback_query(call.id)
 
 def handle_period_callback(call, bot, active_collections, test_collection,
                            collection_history, known_groups, user_sessions):

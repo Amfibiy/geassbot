@@ -268,38 +268,7 @@ def finish_collection(chat_id, bot, active_collections, test_collection,
     except:
         pass
 
-    # Отправляем уведомление о завершении в группу (тег всех участников)
-    if not silent and not is_test and quantity > 0:
-        try:
-            completion_mentions = []
-            for member in collect['participants']:
-                if member.get('username'):
-                    completion_mentions.append(f"@{member['username']}")
-                else:
-                    completion_mentions.append(member.get('name', 'Участник'))
-            
-            if completion_mentions:
-                chunk_size = 50
-                thread_id = collect.get('thread_id')
-                
-                for i in range(0, len(completion_mentions), chunk_size):
-                    chunk = completion_mentions[i:i + chunk_size]
-                    mention_text = f"🎉 *Сбор завершён!*\n\n👥 Участники: {', '.join(chunk)}\n\n✅ Можете заходить в игру!"
-                    
-                    try:
-                        bot.send_message(
-                            chat_id=chat_id,
-                            message_thread_id=thread_id,
-                            text=mention_text,
-                            parse_mode="Markdown"
-                        )
-                        time.sleep(0.5)
-                    except Exception as e:
-                        log_info(f"❌ Ошибка отправки уведомления о завершении: {e}")
-                
-                log_info(f"✅ Отправлено уведомление о завершении {len(completion_mentions)} участникам")
-        except Exception as e:
-            log_info(f"❌ Ошибка при отправке уведомления о завершении: {e}")
+    # УДАЛЕНО: уведомление о завершении в группе с упоминаниями
     
     del storage[chat_id]
 
