@@ -87,15 +87,56 @@ def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
             return
         
         mentions = []
+        creator_mentioned = False
+        creator_name = None
+        
         for member in members:
             user = member.user
             if not user.is_bot:
-                if user.username:
-                    mentions.append(f"@{user.username}")
+                # Запоминаем создателя
+                if member.status == 'creator':
+                    creator_mentioned = True
+                    if user.username:
+                        creator_name = f"@{user.username}"
+                        mentions.append(creator_name)
+                    else:
+                        creator_name = user.first_name
+                        mentions.append(creator_name)
+                # Обычные участники и админы
                 else:
-                    mentions.append(user.first_name)
+                    if user.username:
+                        mentions.append(f"@{user.username}")
+                    else:
+                        mentions.append(user.first_name)
+        
+        # Если создатель не найден в get_chat_members, получаем через get_chat_administrators
+        if not creator_mentioned:
+            try:
+                log_info("📡 Создатель не найден, пробуем get_chat_administrators...")
+                admins = bot.get_chat_administrators(chat_id)
+                for admin in admins:
+                    if admin.status == 'creator':
+                        user = admin.user
+                        if user.username:
+                            creator_name = f"@{user.username}"
+                        else:
+                            creator_name = user.first_name
+                        mentions.insert(0, creator_name)  # Вставляем в начало
+                        creator_mentioned = True
+                        log_info(f"✅ Создатель найден: {creator_name}")
+                        break
+            except Exception as e:
+                log_info(f"❌ Ошибка при поиске создателя: {e}")
+        
+        # Если создатель всё ещё не найден, добавляем текст-заглушку
+        if not creator_mentioned:
+            log_info("⚠️ Создатель не найден, добавляем текст-заглушку")
+            creator_name = "создатель группы"
         
         log_info(f"📝 Сформировано {len(mentions)} упоминаний")
+        
+        if not mentions and creator_mentioned:
+            mentions = [creator_name]
         
         if not mentions:
             log_info("⚠️ Нет упоминаний для отправки")
@@ -105,6 +146,10 @@ def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
             header = f"🧪 *ТЕСТОВЫЙ СБОР!* Администратор {admin_name} запускает тестовый сбор участников!\n\n"
         else:
             header = f"🔔 *ВНИМАНИЕ!* Администратор {admin_name} запускает сбор участников!\n\n"
+        
+        # Добавляем создателя в начало сообщения отдельно, если он есть
+        if creator_name:
+            header = f"👑 {creator_name}, " + header
         
         chunk_size = 50
         thread_id = collection.get('thread_id')
@@ -268,8 +313,6 @@ def finish_collection(chat_id, bot, active_collections, test_collection,
     except:
         pass
 
-    # УДАЛЕНО: уведомление о завершении в группе с упоминаниями
-    
     del storage[chat_id]
 
 def start_test_collection(message, bot, active_collections, test_collection,
