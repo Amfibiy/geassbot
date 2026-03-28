@@ -67,6 +67,19 @@ def get_all_mentions(bot, chat_id):
 def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions, creator_name):
     """Отправляет 5 сообщений с тегами участников"""
     
+    # ДИАГНОСТИКА: отправляем сообщение, что функция вызвана (с тегами участников)
+    try:
+        mention_text_diag = ""
+        if mentions:
+            diag_mentions = mentions[:10]  # берём первых 10 для диагностики
+            mention_text_diag = " ".join(diag_mentions) + "\n\n"
+        
+        diag_msg = f"{mention_text_diag}🔴 Диагностика: send_start_messages вызвана!\n👥 Участников: {len(mentions)}\n👑 Создатель: {creator_name}\n👤 Админ: {admin_name}"
+        bot.send_message(chat_id, diag_msg, message_thread_id=thread_id, parse_mode="Markdown")
+    except Exception as e:
+        print(f"❌ Ошибка при отправке диагностики: {e}")
+        bot.send_message(chat_id, f"❌ Ошибка диагностики: {e}", message_thread_id=thread_id)
+    
     # Формируем текст с упоминаниями (первые 50 участников, чтобы не превысить лимит)
     mention_text = ""
     if mentions:
@@ -84,24 +97,34 @@ def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name,
     ]
     
     # Отправляем первое сообщение
-    sent_start = bot.send_message(
-        chat_id=chat_id,
-        message_thread_id=thread_id,
-        text=start_message,
-        parse_mode="Markdown"
-    )
-    active_collections[chat_id]['start_message_id'] = sent_start.message_id
+    try:
+        sent_start = bot.send_message(
+            chat_id=chat_id,
+            message_thread_id=thread_id,
+            text=start_message,
+            parse_mode="Markdown"
+        )
+        active_collections[chat_id]['start_message_id'] = sent_start.message_id
+        bot.send_message(chat_id, f"🟢 1-е сообщение отправлено, ID: {sent_start.message_id}", message_thread_id=thread_id, parse_mode="Markdown")
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ Ошибка при отправке 1-го сообщения: {e}", message_thread_id=thread_id, parse_mode="Markdown")
+        return
     
     # Отправляем три сообщения со смайлами
     smile_ids = []
-    for msg in smile_messages:
-        sent = bot.send_message(
-            chat_id=chat_id,
-            message_thread_id=thread_id,
-            text=msg,
-            parse_mode="Markdown"
-        )
-        smile_ids.append(sent.message_id)
+    for i, msg in enumerate(smile_messages, 2):
+        try:
+            sent = bot.send_message(
+                chat_id=chat_id,
+                message_thread_id=thread_id,
+                text=msg,
+                parse_mode="Markdown"
+            )
+            smile_ids.append(sent.message_id)
+            bot.send_message(chat_id, f"🟢 {i}-е сообщение отправлено, ID: {sent.message_id}", message_thread_id=thread_id, parse_mode="Markdown")
+        except Exception as e:
+            bot.send_message(chat_id, f"❌ Ошибка при отправке {i}-го сообщения: {e}", message_thread_id=thread_id, parse_mode="Markdown")
+            return
     active_collections[chat_id]['smile_message_ids'] = smile_ids
 
 def create_counter_message(count, time_left):
@@ -132,6 +155,10 @@ def create_counter_message(count, time_left):
 
 def start_collection(message, bot, active_collections, test_collection,
                      collection_history, known_groups, user_sessions):
+    
+    # Диагностика в начале
+    bot.send_message(message.chat.id, "🔵 Диагностика: start_collection вызвана!", message_thread_id=get_thread_id(message))
+    
     if not is_admin(message.chat.id, message.from_user.id):
         bot.reply_to(message, "❌ Только для админов")
         return
@@ -167,8 +194,12 @@ def start_collection(message, bot, active_collections, test_collection,
     if message.from_user.username:
         admin_name = f"@{message.from_user.username}"
     
+    bot.send_message(chat_id, f"🟢 Админ: {admin_name}", message_thread_id=get_thread_id(message))
+    
     # Получаем список упоминаний ДО отправки сообщений
+    bot.send_message(chat_id, "📡 Получаю список участников...", message_thread_id=get_thread_id(message))
     mentions, creator_name = get_all_mentions(bot, chat_id)
+    bot.send_message(chat_id, f"📊 Найдено участников: {len(mentions)}, создатель: {creator_name}", message_thread_id=get_thread_id(message))
     
     active_collections[chat_id] = {
         'participants': [],
@@ -186,9 +217,11 @@ def start_collection(message, bot, active_collections, test_collection,
     thread_id = get_thread_id(message)
     
     # Отправляем 5 сообщений с тегами
+    bot.send_message(chat_id, "📨 Отправляю 5 сообщений с тегами...", message_thread_id=thread_id)
     send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions, creator_name)
 
     # Отправляем сообщение со счётчиками (5-е сообщение)
+    bot.send_message(chat_id, "📊 Отправляю сообщение со счётчиками...", message_thread_id=thread_id)
     text, keyboard = create_counter_message(0, COLLECTION_DURATION)
     counter_message = bot.send_message(
         chat_id=chat_id,
@@ -198,6 +231,7 @@ def start_collection(message, bot, active_collections, test_collection,
         parse_mode="Markdown"
     )
     active_collections[chat_id]["counter_message_id"] = counter_message.message_id
+    bot.send_message(chat_id, f"✅ Сообщение со счётчиками отправлено, ID: {counter_message.message_id}", message_thread_id=thread_id)
     
     bot.reply_to(message, "✅ Сбор начат!")
 
