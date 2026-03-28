@@ -32,60 +32,32 @@ def get_all_mentions(bot, chat_id):
     try:
         members = bot.get_chat_members(chat_id, limit=200)
         mentions = []
-        creator_name = None
         
         for member in members:
             user = member.user
             if not user.is_bot:
-                if member.status == 'creator':
-                    if user.username:
-                        creator_name = f"@{user.username}"
-                    else:
-                        creator_name = user.first_name
-                
                 if user.username:
                     mentions.append(f"@{user.username}")
                 else:
                     mentions.append(user.first_name)
         
-        # Если создатель не найден, ищем через администраторов
-        if not creator_name:
-            try:
-                admins = bot.get_chat_administrators(chat_id)
-                for admin in admins:
-                    if admin.status == 'creator':
-                        user = admin.user
-                        if user.username:
-                            creator_name = f"@{user.username}"
-                        else:
-                            creator_name = user.first_name
-                        if creator_name not in mentions:
-                            mentions.insert(0, creator_name)
-                        break
-            except:
-                pass
-        
-        return mentions, creator_name
+        return mentions
         
     except Exception as e:
         log_info(f"❌ Ошибка получения участников: {e}")
-        return [], None
+        return []
 
-def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions, creator_name):
+def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions):
     """Отправляет 5 сообщений с тегами участников"""
     
-    # Формируем текст с упоминаниями (первые 50 участников, чтобы не превысить лимит)
-    # Упоминания в начале сообщения создают уведомления, но не ломают форматирование
+    # Формируем текст с упоминаниями (первые 50 участников)
     mention_text = ""
     if mentions:
         mentions_chunk = mentions[:50]
         mention_text = " ".join(mentions_chunk) + "\n\n"
     
-    # Экранируем имя админа для Markdown
-    admin_name_escaped = escape_markdown(admin_name)
-    
-    # 1. Сообщение о начале сбора
-    start_message = f"{mention_text}🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n👑 Администратор: {admin_name_escaped}\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже"
+    # 1. Сообщение о начале сбора (без упоминания админа в тексте)
+    start_message = f"{mention_text}🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже"
     
     # 2-4. Три сообщения со смайлами
     smile_messages = [
@@ -179,7 +151,7 @@ def start_collection(message, bot, active_collections, test_collection,
         admin_name = f"@{message.from_user.username}"
     
     # Получаем список упоминаний ДО отправки сообщений
-    mentions, creator_name = get_all_mentions(bot, chat_id)
+    mentions = get_all_mentions(bot, chat_id)
     
     active_collections[chat_id] = {
         'participants': [],
@@ -197,7 +169,7 @@ def start_collection(message, bot, active_collections, test_collection,
     thread_id = get_thread_id(message)
     
     # Отправляем 5 сообщений с тегами
-    send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions, creator_name)
+    send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions)
 
     # Отправляем сообщение со счётчиками (5-е сообщение)
     text, keyboard = create_counter_message(0, COLLECTION_DURATION)
@@ -297,7 +269,7 @@ def start_test_collection(message, bot, active_collections, test_collection,
         admin_name = f"@{message.from_user.username}"
     
     # Получаем список упоминаний
-    mentions, creator_name = get_all_mentions(bot, chat_id)
+    mentions = get_all_mentions(bot, chat_id)
     
     test_collection[chat_id] = {
         'participants': [],
@@ -318,14 +290,11 @@ def start_test_collection(message, bot, active_collections, test_collection,
         mentions_chunk = mentions[:50]
         mention_text = " ".join(mentions_chunk) + "\n\n"
     
-    # Экранируем имя админа
-    admin_name_escaped = escape_markdown(admin_name)
-    
-    # Отправляем сообщение о тестовом сборе с тегами
+    # Отправляем сообщение о тестовом сборе с тегами (без упоминания админа в тексте)
     start_msg = bot.send_message(
         chat_id=chat_id,
         message_thread_id=thread_id,
-        text=f"{mention_text}🧪 *ТЕСТОВЫЙ СБОР*\n\n👑 Администратор: {admin_name_escaped}\n⏰ 30 минут\n👇 Нажмите для теста",
+        text=f"{mention_text}🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут\n👇 Нажмите для теста",
         parse_mode="Markdown"
     )
     test_collection[chat_id]['start_message_id'] = start_msg.message_id
