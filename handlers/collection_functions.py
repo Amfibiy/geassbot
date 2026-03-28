@@ -1,8 +1,14 @@
 import time
+import sys
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from utils.helpers import is_admin, get_thread_id
 from config.settings import COLLECTION_DURATION
 from database.history import save_history
+
+def log_to_stderr(msg):
+    """Логирование в stderr для Render"""
+    print(msg, file=sys.stderr)
+    sys.stderr.flush()
 
 def send_start_messages(bot, chat_id, thread_id, active_collections):
     start_message = "🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже"
@@ -59,11 +65,15 @@ def create_counter_message(count, time_left):
 
 def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
     """Уведомляет всех участников группы о начале сбора"""
+    log_to_stderr(f"🔔 NOTIFY_ALL_MEMBERS ВЫЗВАНА: chat_id={chat_id}, test={is_test}")
+    
     try:
+        log_to_stderr("📡 Запрос get_chat_members...")
         members = bot.get_chat_members(chat_id, limit=200)
+        log_to_stderr(f"📡 Получено {len(members)} участников")
         
         if not members:
-            print("⚠️ Не удалось получить список участников")
+            log_to_stderr("⚠️ Нет участников в ответе API")
             return
         
         mentions = []
@@ -75,7 +85,10 @@ def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
                 else:
                     mentions.append(user.first_name)
         
+        log_to_stderr(f"📝 Сформировано {len(mentions)} упоминаний")
+        
         if not mentions:
+            log_to_stderr("⚠️ Нет упоминаний для отправки")
             return
         
         if is_test:
@@ -85,26 +98,30 @@ def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
         
         chunk_size = 50
         thread_id = collection.get('thread_id')
+        log_to_stderr(f"📨 Отправка уведомлений, thread_id={thread_id}, chunks={len(mentions)//chunk_size + 1}")
         
         for i in range(0, len(mentions), chunk_size):
             chunk = mentions[i:i + chunk_size]
             mention_text = header + "Присоединяйтесь: " + ", ".join(chunk)
             
             try:
-                bot.send_message(
+                sent = bot.send_message(
                     chat_id=chat_id,
                     message_thread_id=thread_id,
                     text=mention_text,
                     parse_mode="Markdown"
                 )
+                log_to_stderr(f"📨 Отправлена часть {i//chunk_size + 1}, message_id={sent.message_id}")
                 time.sleep(0.5)
             except Exception as e:
-                print(f"❌ Ошибка при отправке уведомления: {e}")
+                log_to_stderr(f"❌ Ошибка при отправке уведомления: {e}")
         
-        print(f"✅ Отправлено уведомление {len(mentions)} участникам")
+        log_to_stderr(f"✅ Уведомления отправлены {len(mentions)} участникам")
         
     except Exception as e:
-        print(f"❌ Ошибка при получении участников: {e}")
+        log_to_stderr(f"❌ КРИТИЧЕСКАЯ ОШИБКА в notify_all_members: {e}")
+        import traceback
+        log_to_stderr(traceback.format_exc())
 
 def start_collection(message, bot, active_collections, test_collection,
                      collection_history, known_groups, user_sessions):
@@ -324,9 +341,9 @@ def stop_collection(message, bot, active_collections, test_collection,
 
 def handle_join(call, bot, active_collections, test_collection,
                 collection_history, known_groups, user_sessions):
-    print(f"🔘 ПОЛУЧЕН CALLBACK: {call.data}")
-    print(f"👤 От пользователя: {call.from_user.id}")
-    print(f"💬 В чате: {call.message.chat.id}")
+    log_to_stderr(f"🔘 ПОЛУЧЕН CALLBACK: {call.data}")
+    log_to_stderr(f"👤 От пользователя: {call.from_user.id}")
+    log_to_stderr(f"💬 В чате: {call.message.chat.id}")
     
     chat_id = call.message.chat.id
     
@@ -371,9 +388,9 @@ def handle_join(call, bot, active_collections, test_collection,
                 reply_markup=new_keyboard,
                 parse_mode="Markdown"
             )
-            print(f"✅ Сообщение обновлено")
+            log_to_stderr(f"✅ Сообщение обновлено, участников: {quantity}")
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        log_to_stderr(f"❌ Ошибка обновления: {e}")
 
 def update_collection_counter(chat_id, collect, bot, current_time):
     """Обновляет счётчик обычного сбора"""
