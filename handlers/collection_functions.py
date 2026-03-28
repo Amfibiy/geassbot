@@ -20,14 +20,70 @@ def log_info(msg):
     """Логирование информации"""
     logging.info(msg)
 
-def send_start_messages(bot, chat_id, thread_id, active_collections):
-    start_message = "🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже"
+def get_all_mentions(bot, chat_id):
+    """Получает список упоминаний всех участников группы"""
+    try:
+        members = bot.get_chat_members(chat_id, limit=200)
+        mentions = []
+        creator_name = None
+        
+        for member in members:
+            user = member.user
+            if not user.is_bot:
+                if member.status == 'creator':
+                    if user.username:
+                        creator_name = f"@{user.username}"
+                    else:
+                        creator_name = user.first_name
+                
+                if user.username:
+                    mentions.append(f"@{user.username}")
+                else:
+                    mentions.append(user.first_name)
+        
+        # Если создатель не найден, ищем через администраторов
+        if not creator_name:
+            try:
+                admins = bot.get_chat_administrators(chat_id)
+                for admin in admins:
+                    if admin.status == 'creator':
+                        user = admin.user
+                        if user.username:
+                            creator_name = f"@{user.username}"
+                        else:
+                            creator_name = user.first_name
+                        if creator_name not in mentions:
+                            mentions.insert(0, creator_name)
+                        break
+            except:
+                pass
+        
+        return mentions, creator_name
+        
+    except Exception as e:
+        log_info(f"❌ Ошибка получения участников: {e}")
+        return [], None
+
+def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions, creator_name):
+    """Отправляет 5 сообщений с тегами участников"""
+    
+    # Формируем текст с упоминаниями (первые 50 участников, чтобы не превысить лимит)
+    mention_text = ""
+    if mentions:
+        mentions_chunk = mentions[:50]
+        mention_text = " ".join(mentions_chunk) + "\n\n"
+    
+    # 1. Сообщение о начале сбора
+    start_message = f"{mention_text}🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n👑 Администратор: {admin_name}\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже"
+    
+    # 2-4. Три сообщения со смайлами
     smile_messages = [
-        "🎮 *Готовы к сбору?* 🎮\n\n🏃‍♂️ Не откладывайте на потом!\n🔥 Присоединяйтесь сейчас!",
-        "🌟 *Не пропустите!* 🌟\n\n⏱️ Время ограничено!\n👥 Соберитесь вместе!",
-        "💥 *Последний звонок!* 💥\n\n✅ Успейте присоединиться!\n🎁 Возможность для всех!"
+        f"{mention_text}🎮 *Готовы к сбору?* 🎮\n\n🏃‍♂️ Не откладывайте на потом!\n🔥 Присоединяйтесь сейчас!",
+        f"{mention_text}🌟 *Не пропустите!* 🌟\n\n⏱️ Время ограничено!\n👥 Соберитесь вместе!",
+        f"{mention_text}💥 *Последний звонок!* 💥\n\n✅ Успейте присоединиться!\n🎁 Возможность для всех!"
     ]
     
+    # Отправляем первое сообщение
     sent_start = bot.send_message(
         chat_id=chat_id,
         message_thread_id=thread_id,
@@ -36,6 +92,7 @@ def send_start_messages(bot, chat_id, thread_id, active_collections):
     )
     active_collections[chat_id]['start_message_id'] = sent_start.message_id
     
+    # Отправляем три сообщения со смайлами
     smile_ids = []
     for msg in smile_messages:
         sent = bot.send_message(
@@ -72,105 +129,6 @@ def create_counter_message(count, time_left):
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(button_text, callback_data="join"))
     return text, keyboard
-
-def notify_all_members(bot, chat_id, collection, admin_name, is_test=False):
-    """Уведомляет всех участников группы о начале сбора"""
-    log_info(f"🔔 NOTIFY_ALL_MEMBERS: chat_id={chat_id}, test={is_test}")
-    
-    try:
-        log_info("📡 Запрос get_chat_members...")
-        members = bot.get_chat_members(chat_id, limit=200)
-        log_info(f"📡 Получено {len(members)} участников")
-        
-        if not members:
-            log_info("⚠️ Нет участников в ответе API")
-            return
-        
-        mentions = []
-        creator_name = None
-        
-        for member in members:
-            user = member.user
-            if not user.is_bot:
-                # Запоминаем создателя отдельно
-                if member.status == 'creator':
-                    if user.username:
-                        creator_name = f"@{user.username}"
-                    else:
-                        creator_name = user.first_name
-                    # Добавляем создателя в общий список
-                    if user.username:
-                        mentions.append(f"@{user.username}")
-                    else:
-                        mentions.append(user.first_name)
-                else:
-                    # Остальные участники
-                    if user.username:
-                        mentions.append(f"@{user.username}")
-                    else:
-                        mentions.append(user.first_name)
-        
-        # Если создатель не найден в get_chat_members, получаем через get_chat_administrators
-        if not creator_name:
-            try:
-                log_info("📡 Создатель не найден, пробуем get_chat_administrators...")
-                admins = bot.get_chat_administrators(chat_id)
-                for admin in admins:
-                    if admin.status == 'creator':
-                        user = admin.user
-                        if user.username:
-                            creator_name = f"@{user.username}"
-                        else:
-                            creator_name = user.first_name
-                        # Добавляем создателя в начало списка, если его ещё нет
-                        if creator_name not in mentions:
-                            mentions.insert(0, creator_name)
-                        log_info(f"✅ Создатель найден: {creator_name}")
-                        break
-            except Exception as e:
-                log_info(f"❌ Ошибка при поиске создателя: {e}")
-        
-        log_info(f"📝 Сформировано {len(mentions)} упоминаний, создатель: {creator_name}")
-        
-        if not mentions:
-            log_info("⚠️ Нет упоминаний для отправки")
-            return
-        
-        if is_test:
-            header = f"🧪 *ТЕСТОВЫЙ СБОР!* Администратор {admin_name} запускает тестовый сбор участников!\n\n"
-        else:
-            header = f"🔔 *ВНИМАНИЕ!* Администратор {admin_name} запускает сбор участников!\n\n"
-        
-        # Добавляем создателя в начало сообщения, если он есть
-        if creator_name:
-            header = f"👑 {creator_name}, " + header
-        
-        chunk_size = 50
-        thread_id = collection.get('thread_id')
-        log_info(f"📨 Отправка уведомлений, thread_id={thread_id}")
-        
-        for i in range(0, len(mentions), chunk_size):
-            chunk = mentions[i:i + chunk_size]
-            mention_text = header + "Присоединяйтесь: " + ", ".join(chunk)
-            
-            try:
-                sent = bot.send_message(
-                    chat_id=chat_id,
-                    message_thread_id=thread_id,
-                    text=mention_text,
-                    parse_mode="Markdown"
-                )
-                log_info(f"📨 Отправлена часть {i//chunk_size + 1}, message_id={sent.message_id}")
-                time.sleep(0.5)
-            except Exception as e:
-                log_info(f"❌ Ошибка при отправке уведомления: {e}")
-        
-        log_info(f"✅ Уведомления отправлены {len(mentions)} участникам")
-        
-    except Exception as e:
-        log_info(f"❌ КРИТИЧЕСКАЯ ОШИБКА в notify_all_members: {e}")
-        import traceback
-        log_info(traceback.format_exc())
 
 def start_collection(message, bot, active_collections, test_collection,
                      collection_history, known_groups, user_sessions):
@@ -209,6 +167,9 @@ def start_collection(message, bot, active_collections, test_collection,
     if message.from_user.username:
         admin_name = f"@{message.from_user.username}"
     
+    # Получаем список упоминаний ДО отправки сообщений
+    mentions, creator_name = get_all_mentions(bot, chat_id)
+    
     active_collections[chat_id] = {
         'participants': [],
         'start_time': time.time(),
@@ -223,8 +184,11 @@ def start_collection(message, bot, active_collections, test_collection,
     }
     
     thread_id = get_thread_id(message)
-    send_start_messages(bot, chat_id, thread_id, active_collections)
+    
+    # Отправляем 5 сообщений с тегами
+    send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions, creator_name)
 
+    # Отправляем сообщение со счётчиками (5-е сообщение)
     text, keyboard = create_counter_message(0, COLLECTION_DURATION)
     counter_message = bot.send_message(
         chat_id=chat_id,
@@ -234,8 +198,6 @@ def start_collection(message, bot, active_collections, test_collection,
         parse_mode="Markdown"
     )
     active_collections[chat_id]["counter_message_id"] = counter_message.message_id
-    
-    notify_all_members(bot, chat_id, active_collections[chat_id], admin_name, is_test=False)
     
     bot.reply_to(message, "✅ Сбор начат!")
 
@@ -323,6 +285,9 @@ def start_test_collection(message, bot, active_collections, test_collection,
     if message.from_user.username:
         admin_name = f"@{message.from_user.username}"
     
+    # Получаем список упоминаний
+    mentions, creator_name = get_all_mentions(bot, chat_id)
+    
     test_collection[chat_id] = {
         'participants': [],
         'start_time': time.time(),
@@ -335,16 +300,24 @@ def start_test_collection(message, bot, active_collections, test_collection,
     }
     
     thread_id = get_thread_id(message)
-    text, keyboard = create_counter_message(0, COLLECTION_DURATION)
     
+    # Формируем текст с упоминаниями (первые 50 участников)
+    mention_text = ""
+    if mentions:
+        mentions_chunk = mentions[:50]
+        mention_text = " ".join(mentions_chunk) + "\n\n"
+    
+    # Отправляем сообщение о тестовом сборе с тегами
     start_msg = bot.send_message(
         chat_id=chat_id,
         message_thread_id=thread_id,
-        text="🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут\n👇 Нажмите для теста",
+        text=f"{mention_text}🧪 *ТЕСТОВЫЙ СБОР*\n\n👑 Администратор: {admin_name}\n⏰ 30 минут\n👇 Нажмите для теста",
         parse_mode="Markdown"
     )
     test_collection[chat_id]['start_message_id'] = start_msg.message_id
     
+    # Отправляем сообщение со счётчиками
+    text, keyboard = create_counter_message(0, COLLECTION_DURATION)
     counter_msg = bot.send_message(
         chat_id=chat_id,
         message_thread_id=thread_id,
@@ -353,8 +326,6 @@ def start_test_collection(message, bot, active_collections, test_collection,
         parse_mode="Markdown"
     )
     test_collection[chat_id]['counter_message_id'] = counter_msg.message_id
-    
-    notify_all_members(bot, chat_id, test_collection[chat_id], admin_name, is_test=True)
     
     bot.reply_to(message, "🧪 Тестовый сбор запущен!")
 
