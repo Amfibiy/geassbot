@@ -137,16 +137,11 @@ def handle_confirm_callback(call, bot, active_collections, test_collection, know
     if not chat_id or not clean_type:
         bot.answer_callback_query(call.id, "❌ Ошибка сессии. Попробуйте заново.")
         return
-
-    # Вызываем логику удаления, которую ты написал выше
-    # Примечание: do_clean ожидает параметр, если его нет — передаем None
     do_clean(call.message, chat_id, clean_type, None, bot)
     
-    # Очищаем данные сессии после работы
     session.pop('clean_chat_id', None)
     session.pop('clean_type', None)
     
-    # Убираем кнопки из сообщения
     bot.edit_message_text("✅ Данные успешно удалены.", call.message.chat.id, call.message.message_id)
 
 def handle_cancel_clean(call, bot):

@@ -2,6 +2,8 @@ import os
 import time
 import datetime
 from pymongo import MongoClient
+import telebot # Убедись, что этот импорт есть в начале файла
+import logging
 
 MONGO_URL = os.getenv('MONGO_URI') or os.getenv('MONGO_URL')
 client = MongoClient(MONGO_URL)
@@ -10,7 +12,27 @@ db = client['geassbot_db']
 members_col = db['chat_members']       
 history_col = db['collection_history'] 
 groups_col = db['known_groups']        
-
+def get_known_groups_for_admin(admin_id, bot, known_groups):
+    """
+    Возвращает словарь {chat_id: chat_title} для всех групп из known_groups,
+    в которых пользователь с admin_id является администратором или создателем.
+    """
+    admin_groups = {}
+    if not known_groups:
+        return admin_groups
+        
+    for g_id in list(known_groups): # Используем list() для безопасной итерации
+        try:
+            member = bot.get_chat_member(g_id, admin_id)
+            if member.status in ['creator', 'administrator']:
+                chat = bot.get_chat(g_id)
+                admin_groups[str(g_id)] = chat.title or f"Группа {g_id}"
+        except telebot.apihelper.ApiTelegramException as e:
+            logging.info(f"Не удалось проверить админа в группе {g_id}: {e.description}")
+        except Exception as e:
+             logging.info(f"Ошибка при получении информации о группе {g_id}: {e}")
+            
+    return admin_groups
 def save_known_group(chat_id, title):
     """Сохраняет или обновляет данные о группе"""
     groups_col.update_one(
