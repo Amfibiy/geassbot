@@ -1,310 +1,158 @@
 import time
 import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from utils.helpers import is_admin
-
-def escape_markdown(text):
-    """Экранирует спецсимволы для Markdown"""
-    escape_chars = r'_*[]()~`>#+-=|{}.!'
-    for char in escape_chars:
-        text = text.replace(char, '\\' + char)
-    return text
-
-def escape_html(text):
-    """Экранирует спецсимволы для HTML"""
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+from database.mongo import load_history_for_chat
 
 def show_current_collection_in_group(message, collect, bot):
-    quantity = len(collect['participants'])
+    quantity = len(collect.get('participants', []))
     passed = time.time() - collect['start_time']
-    left = max(0, 1800 - passed)
+    from config.settings import COLLECTION_DURATION
+    left = max(0, COLLECTION_DURATION - passed)
+    
     minutes_pass = int(passed // 60)
     minutes_left = int(left // 60)
     seconds_left = int(left % 60)
     
-    if collect.get('is_test'):
-        header = "🧪 *Текущий тестовый сбор*"
-    else:
-        header = "📊 *Текущий сбор*"
-
-    text = f"""{header}
-
+    status_text = f"""📊 *Текущий статус сбора:*
 👥 Участников: {quantity}
-⏱️ Прошло: {minutes_pass} мин
-⏰ Осталось: {minutes_left:02d}:{seconds_left:02d}
+⏱️ Прошло времени: {minutes_pass} мин
+⏰ Осталось: {minutes_left:02d}:{seconds_left:02d}"""
+    bot.reply_to(message, status_text, parse_mode="Markdown")
 
-*Список участников:*\n"""
+def show_menu_periods_in_ls(message, session, bot):
+    name = session.get('name_group', f"Группа {session.get('chat_id')}")
+    text_menu = f"""📂 *Группа:* {name}
+
+*Выберите период для просмотра статистики:*
+1️⃣ Текущий сбор
+2️⃣ Сегодня
+3️⃣ Вчера
+4️⃣ Неделя
+5️⃣ Месяц
+6️⃣ Квартал
+7️⃣ Год
+8️⃣ Всё время
+9️⃣ Свой период (даты)
+
+👇 Отправьте номер (1-9) или введите дату в формате ДД-ММ-ГГГГ"""
     
-    for p in collect['participants'][:20]:
-        if p.get('username'):
-            name = escape_markdown(f"@{p['username']}")
-        else:
-            name = escape_markdown(p.get('name', 'Неизвестно'))
-        text += f"• {name}\n"
-    
-    if len(collect['participants']) > 20:
-        text += f"... и ещё {len(collect['participants']) - 20}"
-    
+    bot.reply_to(message, text_menu, parse_mode="Markdown")
+
+def format_participants_list(participants):
+    unique_participants = {p['id']: p for p in participants if isinstance(p, dict) and 'id' in p}
+    count = len(unique_participants)
+    text = f"👥 Уникальных участников: {count}\n\n"
+    for p_id, p in unique_participants.items():
+        name = p.get('name', 'Без имени')
+        username = f" (@{p['username']})" if p.get('username') else ""
+        text += f"• {name}{username}\n"
+    return text, count
+
+def show_result_at_date(message, chat_id, participants, date_str, session, bot):
+    users_text, count = format_participants_list(participants)
+    text = f"📅 *Результаты за {date_str}*\n\n" + users_text
     bot.reply_to(message, text, parse_mode="Markdown")
 
-def show_period_in_ls(message, chat_id, period, session, bot, collection_history):
+def show_result_by_date(message, chat_id, participants, date1_str, date2_str, session, bot):
+    users_text, count = format_participants_list(participants)
+    text = f"📅 *Результаты с {date1_str} по {date2_str}*\n\n" + users_text
+    bot.reply_to(message, text, parse_mode="Markdown")
+
+def show_period_in_ls(message, chat_id, period_type, session, bot):
+    now = time.time()
+    begin = 0
+    end = now
+    
+    if period_type == 'день':
+        begin = datetime.datetime.now().replace(hour=0, minute=0, second=0).timestamp()
+    elif period_type == 'неделя':
+        begin = now - 604800
+    elif period_type == 'месяц':
+        begin = now - 2592000
+    elif period_type == 'квартал':
+        begin = now - (90 * 86400)
+    elif period_type == 'год':
+        begin = now - (365 * 86400)
+    elif period_type == 'всё':
+        begin = 0
+        
+    records = load_history_for_chat(chat_id, begin, end)
+    all_participants = []
+    for r in records:
+        all_participants.extend(r.get('participants', []))
+        
+    if not all_participants:
+        bot.reply_to(message, f"📭 За период '{period_type.capitalize()}' записей не найдено.")
+        return
+        
+    users_text, count = format_participants_list(all_participants)
+    text = f"📊 *Результаты за период: {period_type.capitalize()}*\n\n" + users_text
+    bot.reply_to(message, text, parse_mode="Markdown")
+
+# --- ФУНКЦИИ ДЛЯ ИНЛАЙН КНОПОК ---
+def show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions):
+    keyboard = InlineKeyboardMarkup()
+    if message.chat.type == "private":
+        for g_id in known_groups:
+            try:
+                chat_info = bot.get_chat(g_id)
+                keyboard.add(InlineKeyboardButton(chat_info.title, callback_data=f"list_group_{g_id}"))
+            except: continue
+        bot.reply_to(message, "Выберите группу для просмотра статистики:", reply_markup=keyboard)
+    else:
+        if message.chat.id in active_collections:
+            show_current_collection_in_group(message, active_collections[message.chat.id], bot)
+        else:
+            bot.reply_to(message, "📭 В этой группе сейчас нет активного сбора. Используйте /list в ЛС бота для истории.")
+
+def handle_list_group_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
+    chat_id = int(call.data.replace('list_group_', ''))
+    user_sessions[call.from_user.id] = {'chat_id': chat_id, 'step': 'choice_period'}
+    
+    keyboard = InlineKeyboardMarkup()
+    keyboard.row(InlineKeyboardButton("Текущий сбор", callback_data="period_1"))
+    keyboard.row(InlineKeyboardButton("Сегодня", callback_data="period_2"), InlineKeyboardButton("Вчера", callback_data="period_3"))
+    keyboard.row(InlineKeyboardButton("Неделя", callback_data="period_4"), InlineKeyboardButton("Месяц", callback_data="period_5"))
+    keyboard.add(InlineKeyboardButton("📅 Выбрать даты", callback_data="period_9"))
+    
+    bot.edit_message_text("Выберите период:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=keyboard)
+
+def handle_period_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
+    user_id = call.from_user.id
+    session = user_sessions.get(user_id)
+    if not session: return
+
+    period_key = call.data
+    chat_id = session['chat_id']
     now = time.time()
     
-    if period == "день":
-        begin = now - 86400
-        name = "последние 24 часа"
-    elif period == "вчера":
-        yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-        begin = yesterday.replace(hour=0, minute=0, second=0).timestamp()
+    if period_key == "period_1":
+        if chat_id in active_collections:
+            show_current_collection_in_group(call.message, active_collections[chat_id], bot)
+        else:
+            bot.answer_callback_query(call.id, "📭 Нет активного сбора")
+        return
+
+    begin, end = 0, now
+    if period_key == "period_2":
+        begin = datetime.datetime.now().replace(hour=0, minute=0, second=0).timestamp()
+    elif period_key == "period_3":
+        begin = (datetime.datetime.now() - datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0).timestamp()
         end = begin + 86400
-        date_str = yesterday.strftime('%d-%m-%Y')
-        name = f"за {date_str} (вчера)"
-    elif period == "неделя":
+    elif period_key == "period_4":
         begin = now - 604800
-        name = "последние 7 дней"
-    elif period == "месяц":
-        begin = now - 2592000
-        name = "последние 30 дней"
-    elif period == "квартал":
-        begin = now - 7776000
-        name = "последние 90 дней"
-    elif period == "год":
-        begin = now - 31536000
-        name = "последние 365 дней"
-    elif period == "всё":
-        begin = 0
-        name = "всё время"
-    else:
-        bot.reply_to(message, "❌ Неизвестный период")
+    elif period_key == "period_9":
+        session['step'] = "wait_custom_date"
+        bot.edit_message_text("Введите период в формате: `ДД-ММ-ГГГГ - ДД-ММ-ГГГГ`", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
         return
-    
+
+    records = load_history_for_chat(chat_id, begin, end)
     all_participants = []
-    if chat_id in collection_history:
-        for record in collection_history[chat_id]:
-            if period == "вчера":
-                if begin <= record['end_time'] <= end:
-                    all_participants.extend(record['participants'])
-            else:
-                if record['end_time'] >= begin:
-                    all_participants.extend(record['participants'])
-    
+    for r in records:
+        all_participants.extend(r.get('participants', []))
+            
     if not all_participants:
-        if period == "вчера":
-            bot.reply_to(message, f"📭 За {date_str} (вчера) не было сборов")
-        else:
-            bot.reply_to(message, f"📭 Нет участников за {name}")
-        show_menu_periods_in_ls(message, session, bot, collection_history)
-        return
-    
-    unique = {}
-    for member in all_participants:
-        uid = member['id']
-        if member.get('username'):
-            name_display = escape_markdown(f"@{member['username']}")
-        else:
-            name_display = escape_markdown(member.get('name', 'Неизвестно'))
-        if uid not in unique:
-            unique[uid] = {'name': name_display, 'quantity': 1}
-        else:
-            unique[uid]['quantity'] += 1
-    
-    report = f"📊 *{escape_markdown(session['name_group'])}* за {name}:\n"
-    report += f"👥 Участников: {len(unique)}\n"
-    report += f"🔄 Участий: {len(all_participants)}\n\n"
-    
-    sorted_items = sorted(unique.items(), key=lambda x: x[1]['quantity'], reverse=True)
-    for _, data in sorted_items[:30]:
-        report += f"• {data['name']}"
-        if data['quantity'] > 1:
-            report += f" ({data['quantity']} раз)"
-        report += "\n"
-    if len(sorted_items) > 30:
-        report += f"... и ещё {len(sorted_items) - 30}"
-    
-    bot.reply_to(message, report, parse_mode='Markdown')
-    show_menu_periods_in_ls(message, session, bot, collection_history)
-
-def show_menu_of_choice_group_in_ls(message, user_id, bot, known_groups, active_collections, test_collection, collection_history, user_sessions):
-    available_groups = []
-    
-    for chat_id in known_groups:
-        try:
-            if is_admin(chat_id, user_id):
-                chat = bot.get_chat(chat_id)
-                name = chat.title if chat.title else f"Группа {chat_id}"
-                available_groups.append((chat_id, name))
-        except:
-            if chat_id in known_groups:
-                known_groups.remove(chat_id)
-                from database.groups import save_known_groups
-                save_known_groups(known_groups)
-            continue
-    
-    all_chats = set(collection_history.keys()) | set(active_collections.keys()) | set(test_collection.keys())
-    for chat_id in all_chats:
-        if chat_id not in known_groups:
-            try:
-                if is_admin(chat_id, user_id):
-                    chat = bot.get_chat(chat_id)
-                    name = chat.title if chat.title else f"Группа {chat_id}"
-                    available_groups.append((chat_id, name))
-            except:
-                continue
-    
-    if not available_groups:
-        bot.reply_to(message,
-            "👋 *Добро пожаловать!*\n\n"
-            "📭 Пока нет групп.\n\n"
-            "📌 *Чтобы добавить группу:*\n"
-            "1️⃣ Добавьте бота в группу как администратора\n"
-            "2️⃣ Бот автоматически обнаружит группу\n"
-            "3️⃣ Через несколько секунд группа появится здесь\n\n"
-            "💡 *Статус:* Бот проверяет новые группы автоматически"
-        )
-        return
-    
-    available_groups.sort(key=lambda x: x[1])
-    
-    # Создаём клавиатуру с кнопками групп
-    keyboard = InlineKeyboardMarkup(row_width=1)
-    text = "📋 <b>Выберите группу для просмотра:</b>\n\n"
-    
-    for index, (chat_id, name) in enumerate(available_groups, 1):
-        status = "🟢" if chat_id in active_collections else "⚪"
-        safe_name = escape_html(name)
-        text += f"{index}. {status} {safe_name}\n"
-        text += f"   🆔 <code>{chat_id}</code>\n\n"
-        keyboard.add(InlineKeyboardButton(
-            f"{index}. {name}",
-            callback_data=f"list_group_{chat_id}"
-        ))
-    
-    text += "👇 <b>Нажмите на группу</b> или отправьте номер/ID"
-
-    user_sessions[user_id] = {
-        'groups': available_groups,
-        'step': 'choice_group'
-    }
-    
-    bot.send_message(message.chat.id, text, reply_markup=keyboard, parse_mode="HTML")
-
-def show_menu_periods_in_ls(message, session, bot, collection_history):
-    chat_id = session['chat_id']
-    name = session['name_group']
-    
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    buttons = [
-        ("1️⃣ Текущий", "period_1"),
-        ("2️⃣ Сегодня", "period_2"),
-        ("3️⃣ Вчера", "period_3"),
-        ("4️⃣ Неделя", "period_4"),
-        ("5️⃣ Месяц", "period_5"),
-        ("6️⃣ Квартал", "period_6"),
-        ("7️⃣ Год", "period_7"),
-        ("8️⃣ Всё время", "period_8"),
-        ("9️⃣ Свой период", "period_9")
-    ]
-
-    for btn_text, data in buttons:
-        keyboard.add(InlineKeyboardButton(btn_text, callback_data=data))
-    
-    total_collections = len(collection_history.get(chat_id, []))
-    total_participants = 0
-    for record in collection_history.get(chat_id, []):
-        total_participants += record.get('total_participants', len(record.get('participants', [])))
-    
-    safe_name = escape_html(name)
-    text = f"""📋 <b>Группа: {safe_name}</b>
-
-📊 <b>Статистика:</b>
-• Всего сборов: {total_collections}
-• Всего участников: {total_participants}
-
-👇 <b>Нажмите на период для просмотра</b>"""
-    
-    session['step'] = 'choice_period'
-    bot.send_message(message.chat.id, text, reply_markup=keyboard, parse_mode='HTML')
-
-def show_participants_list(message, bot, active_collections, test_collection,
-                           collection_history, known_groups, user_sessions):
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-    
-    if message.chat.type != "private":
-        if not is_admin(chat_id, user_id):
-            bot.reply_to(message, "❌ Только для админов")
-            return
-        if chat_id in active_collections:
-            collect = active_collections[chat_id]
-            show_current_collection_in_group(message, collect, bot)
-        elif chat_id in test_collection:
-            collect = test_collection[chat_id]
-            show_current_collection_in_group(message, collect, bot)
-        else:
-            bot.reply_to(message, "📭 Нет активного сбора. Используйте /start_collect")
-        return
-    
-    show_menu_of_choice_group_in_ls(message, user_id, bot, known_groups, active_collections, test_collection, collection_history, user_sessions)
-
-def handle_list_group_callback(call, bot, active_collections, test_collection,
-                                collection_history, known_groups, user_sessions):
-    user_id = call.from_user.id
-    session = user_sessions.get(user_id)
-    if not session or session.get('step') != 'choice_group':
-        bot.answer_callback_query(call.id, "❌ Сессия устарела. Начните заново с /list")
-        return
-    
-    chat_id = int(call.data.replace('list_group_', ''))
-    name = None
-    for cid, n in session['groups']:
-        if cid == chat_id:
-            name = n
-            break
-    
-    if not name:
-        bot.answer_callback_query(call.id, "❌ Группа не найдена")
-        return
-    
-    session['chat_id'] = chat_id
-    session['name_group'] = name
-    session['step'] = 'choice_period'
-    
-    show_menu_periods_in_ls(call.message, session, bot, collection_history)
-    bot.answer_callback_query(call.id)
-
-def handle_period_callback(call, bot, active_collections, test_collection,
-                           collection_history, known_groups, user_sessions):
-    user_id = call.from_user.id
-    session = user_sessions.get(user_id)
-    if not session or session.get('step') != 'choice_period':
-        bot.answer_callback_query(call.id, "❌ Сессия устарела. Начните заново с /list")
-        return
-    
-    period_num = int(call.data.replace('period_', ''))
-    chat_id = session['chat_id']
-    periods = {
-        1: 'текущий',
-        2: 'день',
-        3: 'вчера',
-        4: 'неделя',
-        5: 'месяц',
-        6: 'квартал',
-        7: 'год',
-        8: 'всё',
-        9: 'ожидание_периода'
-    }
-    period = periods.get(period_num)
-    
-    if period == "текущий":
-        if chat_id in active_collections:
-            collect = active_collections[chat_id]
-            show_current_collection_in_group(call.message, collect, bot)
-        else:
-            bot.answer_callback_query(call.id, "📭 Нет активного сбора", show_alert=True)
-    elif period == 'ожидание_периода':
-        session['step'] = 'input_period'
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📅 Введите период (ДД-ММ-ГГГГ - ДД-ММ-ГГГГ)")
+        bot.send_message(call.message.chat.id, "📭 За этот период записей не найдено.")
     else:
-        show_period_in_ls(call.message, chat_id, period, session, bot, collection_history)
-        bot.answer_callback_query(call.id)
+        users_text, count = format_participants_list(all_participants)
+        bot.send_message(call.message.chat.id, f"📊 *Результаты за период:*\n\n{users_text}", parse_mode="Markdown")

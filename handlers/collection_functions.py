@@ -1,10 +1,11 @@
 import time
 import sys
 import logging
+import threading
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from utils.helpers import is_admin, get_thread_id
 from config.settings import COLLECTION_DURATION
-from database.history import save_history
+from database.mongo import save_history_record, get_all_members_ids
 
 # Настройка логирования в файл и stdout
 logging.basicConfig(
@@ -17,56 +18,49 @@ logging.basicConfig(
 )
 
 def log_info(msg):
-    """Логирование информации"""
     logging.info(msg)
 
 def escape_markdown(text):
-    """Экранирует спецсимволы для Markdown"""
     escape_chars = r'_*[]()~`>#+-=|{}.!'
     for char in escape_chars:
         text = text.replace(char, '\\' + char)
     return text
 
-def get_all_mentions(bot, chat_id):
-    """Получает список упоминаний всех участников группы"""
-    try:
-        members = bot.get_chat_members(chat_id, limit=200)
-        mentions = []
-        
-        for member in members:
-            user = member.user
-            if not user.is_bot:
-                if user.username:
-                    mentions.append(f"@{user.username}")
-                else:
-                    mentions.append(user.first_name)
-        
-        return mentions
-        
-    except Exception as e:
-        log_info(f"❌ Ошибка получения участников: {e}")
-        return []
+def send_silent_mentions(bot, chat_id, thread_id):
+    """Фоновый поток: получает все ID из базы и рассылает невидимые теги пачками"""
+    user_ids = get_all_members_ids(chat_id)
+    if not user_ids:
+        log_info(f"В базе чата {chat_id} нет пользователей для тега.")
+        return
 
-def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions):
-    """Отправляет 5 сообщений с тегами участников"""
+    invisible_char = "​" # U+200B Невидимый пробел
     
-    # Формируем текст с упоминаниями (первые 50 участников)
-    mention_text = ""
-    if mentions:
-        mentions_chunk = mentions[:50]
-        mention_text = " ".join(mentions_chunk) + "\n\n"
-    
-    # 1. Сообщение о начале сбора (без упоминания админа в тексте)
-    start_message = f"{mention_text}🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже"
-    
-    # 2-4. Три сообщения со смайлами
+    # Отправляем пачками по 5, чтобы не словить flood ban
+    for i in range(0, len(user_ids), 5):
+        chunk = user_ids[i:i + 5]
+        mentions = "".join([f"[{invisible_char}](tg://user?id={uid})" for uid in chunk])
+        
+        try:
+            bot.send_message(
+                chat_id=chat_id,
+                message_thread_id=thread_id,
+                text=f"📢 Внимание! Сбор!{mentions}",
+                parse_mode="Markdown",
+                disable_notification=False # Уведомление придет обязательно
+            )
+            time.sleep(4) # Обязательная пауза
+        except Exception as e:
+            log_info(f"❌ Ошибка отправки тегов: {e}")
+            break
+
+def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name):
+    start_message = f"🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже"
     smile_messages = [
-        f"{mention_text}🎮 *Готовы к сбору?* 🎮\n\n🏃‍♂️ Не откладывайте на потом!\n🔥 Присоединяйтесь сейчас!",
-        f"{mention_text}🌟 *Не пропустите!* 🌟\n\n⏱️ Время ограничено!\n👥 Соберитесь вместе!",
-        f"{mention_text}💥 *Последний звонок!* 💥\n\n✅ Успейте присоединиться!\n🎁 Возможность для всех!"
+        f"🎮 *Готовы к сбору?* 🎮\n\n🏃‍♂️ Не откладывайте на потом!\n🔥 Присоединяйтесь сейчас!",
+        f"🌟 *Не пропустите!* 🌟\n\n⏱️ Время ограничено!\n👥 Соберитесь вместе!",
+        f"💥 *Последний звонок!* 💥\n\n✅ Успейте присоединиться!\n🎁 Возможность для всех!"
     ]
     
-    # Отправляем первое сообщение
     sent_start = bot.send_message(
         chat_id=chat_id,
         message_thread_id=thread_id,
@@ -75,7 +69,6 @@ def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name,
     )
     active_collections[chat_id]['start_message_id'] = sent_start.message_id
     
-    # Отправляем три сообщения со смайлами
     smile_ids = []
     for msg in smile_messages:
         sent = bot.send_message(
@@ -94,27 +87,21 @@ def create_counter_message(count, time_left):
     if count == 0:
         members_text = "👤 Пока никто не присоединился"
         button_text = "✅ Стать первым участником"
-    elif count == 1:
-        members_text = f"👥 Участников: {count} человек"
-        button_text = f"✅ Присоединиться ({count})"
     else:
         members_text = f"👥 Участников: {count} человек"
         button_text = f"✅ Присоединиться ({count})"
     
-    text = f"""
-📊 *Счётчики:*
+    text = f"""📊 *Счётчики:*
 {members_text}
 ⏰ Осталось времени: {minutes_left:02d}:{seconds_left:02d}
 
-👇 Нажмите кнопку чтобы присоединиться
-    """
+👇 Нажмите кнопку чтобы присоединиться"""
     
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(button_text, callback_data="join"))
     return text, keyboard
 
-def start_collection(message, bot, active_collections, test_collection,
-                     collection_history, known_groups, user_sessions):
+def start_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     if not is_admin(message.chat.id, message.from_user.id):
         bot.reply_to(message, "❌ Только для админов")
         return
@@ -130,8 +117,7 @@ def start_collection(message, bot, active_collections, test_collection,
         minutes_left = int(left // 60)
         seconds_left = int(left % 60)
         
-        status_text = f"""
-⚠️ *Активный сбор уже идёт!*
+        status_text = f"""⚠️ *Активный сбор уже идёт!*
 
 📊 *Текущий статус:*
 👥 Участников: {quantity}
@@ -140,18 +126,15 @@ def start_collection(message, bot, active_collections, test_collection,
 
 💡 *Команды для управления:*
 /list - Статистика сбора
-/stop - Завершить сбор досрочно
-
-❌ *Новый сбор можно запустить только после завершения текущего.*"""
+/stop - Завершить сбор досрочно"""
         bot.reply_to(message, status_text, parse_mode="Markdown")
         return
 
     admin_name = message.from_user.first_name
     if message.from_user.username:
         admin_name = f"@{message.from_user.username}"
-    
-    # Получаем список упоминаний ДО отправки сообщений
-    mentions = get_all_mentions(bot, chat_id)
+        
+    thread_id = get_thread_id(message)
     
     active_collections[chat_id] = {
         'participants': [],
@@ -163,15 +146,14 @@ def start_collection(message, bot, active_collections, test_collection,
         'admin_name': admin_name,
         'admin_username': message.from_user.username or "",
         'is_test': False,
-        'thread_id': get_thread_id(message)
+        'thread_id': thread_id
     }
     
-    thread_id = get_thread_id(message)
-    
-    # Отправляем 5 сообщений с тегами
-    send_start_messages(bot, chat_id, thread_id, active_collections, admin_name, mentions)
+    send_start_messages(bot, chat_id, thread_id, active_collections, admin_name)
 
-    # Отправляем сообщение со счётчиками (5-е сообщение)
+    # Запускаем фоновый тег участников
+    threading.Thread(target=send_silent_mentions, args=(bot, chat_id, thread_id), daemon=True).start()
+
     text, keyboard = create_counter_message(0, COLLECTION_DURATION)
     counter_message = bot.send_message(
         chat_id=chat_id,
@@ -184,8 +166,7 @@ def start_collection(message, bot, active_collections, test_collection,
     
     bot.reply_to(message, "✅ Сбор начат!")
 
-def finish_collection(chat_id, bot, active_collections, test_collection, 
-                      collection_history, silent=False, is_test=False):
+def finish_collection(chat_id, bot, active_collections, test_collection, silent=False, is_test=False):
     if is_test:
         if chat_id not in test_collection:
             return
@@ -211,11 +192,7 @@ def finish_collection(chat_id, bot, active_collections, test_collection,
             'admin_name': collect.get('admin_name', 'Неизвестно'),
             'is_test': False
         }
-
-        if chat_id not in collection_history:
-            collection_history[chat_id] = []
-        collection_history[chat_id].append(completed)
-        save_history(collection_history)
+        save_history_record(completed)
     
     for msg_id in collect.get('smile_message_ids', []):
         try:
@@ -224,16 +201,9 @@ def finish_collection(chat_id, bot, active_collections, test_collection,
             pass
     
     if is_test:
-        final_text = f"""🧪 *Тест завершён!*
-        
-👥 Участников: {quantity}
-⏰ Время вышло"""
+        final_text = f"🧪 *Тест завершён!*\n\n👥 Участников: {quantity}\n⏰ Время вышло"
     else:
-        final_text = f"""✅ *Сбор завершён!*
-        
-👥 Участников: {quantity}
-⏰ Время вышло
-{'🎉 Спасибо!' if quantity > 0 else '😔 Никто не присоединился'}"""
+        final_text = f"✅ *Сбор завершён!*\n\n👥 Участников: {quantity}\n⏰ Время вышло\n{'🎉 Спасибо!' if quantity > 0 else '😔 Никто не присоединился'}"
     
     try:
         if collect['counter_message_id']:
@@ -254,22 +224,15 @@ def finish_collection(chat_id, bot, active_collections, test_collection,
 
     del storage[chat_id]
 
-def start_test_collection(message, bot, active_collections, test_collection,
-                          collection_history, known_groups, user_sessions):
+def start_test_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     if not is_admin(message.chat.id, message.from_user.id):
         return
     chat_id = message.chat.id
     
     if chat_id in test_collection:
-        finish_collection(chat_id, bot, active_collections, test_collection, 
-                         collection_history, silent=True, is_test=True)
+        finish_collection(chat_id, bot, active_collections, test_collection, silent=True, is_test=True)
     
-    admin_name = message.from_user.first_name
-    if message.from_user.username:
-        admin_name = f"@{message.from_user.username}"
-    
-    # Получаем список упоминаний
-    mentions = get_all_mentions(bot, chat_id)
+    thread_id = get_thread_id(message)
     
     test_collection[chat_id] = {
         'participants': [],
@@ -279,27 +242,20 @@ def start_test_collection(message, bot, active_collections, test_collection,
         'smile_message_ids': [],
         'admin_id': message.from_user.id,
         'is_test': True,
-        'thread_id': get_thread_id(message)
+        'thread_id': thread_id
     }
     
-    thread_id = get_thread_id(message)
-    
-    # Формируем текст с упоминаниями (первые 50 участников)
-    mention_text = ""
-    if mentions:
-        mentions_chunk = mentions[:50]
-        mention_text = " ".join(mentions_chunk) + "\n\n"
-    
-    # Отправляем сообщение о тестовом сборе с тегами (без упоминания админа в тексте)
     start_msg = bot.send_message(
         chat_id=chat_id,
         message_thread_id=thread_id,
-        text=f"{mention_text}🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут\n👇 Нажмите для теста",
+        text=f"🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут\n👇 Нажмите для теста",
         parse_mode="Markdown"
     )
     test_collection[chat_id]['start_message_id'] = start_msg.message_id
+
+    # Запускаем фоновый тег участников
+    threading.Thread(target=send_silent_mentions, args=(bot, chat_id, thread_id), daemon=True).start()
     
-    # Отправляем сообщение со счётчиками
     text, keyboard = create_counter_message(0, COLLECTION_DURATION)
     counter_msg = bot.send_message(
         chat_id=chat_id,
@@ -309,11 +265,9 @@ def start_test_collection(message, bot, active_collections, test_collection,
         parse_mode="Markdown"
     )
     test_collection[chat_id]['counter_message_id'] = counter_msg.message_id
-    
     bot.reply_to(message, "🧪 Тестовый сбор запущен!")
 
-def stop_collection(message, bot, active_collections, test_collection,
-                    collection_history, known_groups, user_sessions):
+def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     if not is_admin(message.chat.id, message.from_user.id):
         bot.reply_to(message, "❌ Только для админов")
         return
@@ -321,24 +275,16 @@ def stop_collection(message, bot, active_collections, test_collection,
     chat_id = message.chat.id
     
     if chat_id in active_collections:
-        finish_collection(chat_id, bot, active_collections, test_collection, 
-                         collection_history, silent=False, is_test=False)
+        finish_collection(chat_id, bot, active_collections, test_collection, silent=False, is_test=False)
         bot.reply_to(message, "✅ Обычный сбор досрочно завершен")
     elif chat_id in test_collection:
-        finish_collection(chat_id, bot, active_collections, test_collection, 
-                         collection_history, silent=False, is_test=True)
+        finish_collection(chat_id, bot, active_collections, test_collection, silent=False, is_test=True)
         bot.reply_to(message, "🧪 Тестовый сбор досрочно завершен")
     else:
         bot.reply_to(message, "⚠️ Нет активного сбора")
 
-def handle_join(call, bot, active_collections, test_collection,
-                collection_history, known_groups, user_sessions):
-    log_info(f"🔘 ПОЛУЧЕН CALLBACK: {call.data}")
-    log_info(f"👤 От пользователя: {call.from_user.id}")
-    log_info(f"💬 В чате: {call.message.chat.id}")
-    
+def handle_join(call, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = call.message.chat.id
-    
     if chat_id in active_collections:
         collection = active_collections[chat_id]
         collection_type = "normal"
@@ -380,17 +326,14 @@ def handle_join(call, bot, active_collections, test_collection,
                 reply_markup=new_keyboard,
                 parse_mode="Markdown"
             )
-            log_info(f"✅ Сообщение обновлено, участников: {quantity}")
     except Exception as e:
         log_info(f"❌ Ошибка обновления: {e}")
 
 def update_collection_counter(chat_id, collect, bot, current_time):
-    """Обновляет счётчик обычного сбора"""
     passed = current_time - collect['start_time']
     left = COLLECTION_DURATION - passed
     quantity = len(collect['participants'])
     new_text, new_keyboard = create_counter_message(quantity, left)
-    
     try:
         if collect['counter_message_id']:
             bot.edit_message_text(
@@ -404,20 +347,4 @@ def update_collection_counter(chat_id, collect, bot, current_time):
         pass
 
 def update_test_counter(chat_id, collect, bot, current_time):
-    """Обновляет счётчик тестового сбора"""
-    passed = current_time - collect['start_time']
-    left = COLLECTION_DURATION - passed
-    quantity = len(collect['participants'])
-    new_text, new_keyboard = create_counter_message(quantity, left)
-    
-    try:
-        if collect['counter_message_id']:
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=collect['counter_message_id'],
-                text=new_text,
-                reply_markup=new_keyboard,
-                parse_mode="Markdown"
-            )
-    except:
-        pass
+    update_collection_counter(chat_id, collect, bot, current_time)

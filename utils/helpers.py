@@ -1,44 +1,38 @@
-import time
-import datetime
-from database.groups import save_known_groups
+import telebot
+import logging
+from database.mongo import save_known_group
 
-# Эти переменные будут доступны глобально
+# Глобальные переменные (инициализируются в main.py)
 known_groups = None
-collection_history = None
 bot = None
 
-def get_thread_id(message):
-    """Получает ID темы форума из сообщения"""
-    return message.message_thread_id if hasattr(message, 'message_thread_id') else None
+def log_info(msg):
+    logging.info(msg)
 
 def is_admin(chat_id, user_id):
+    """
+    Проверяет права администратора. 
+    В ЛС всегда возвращает False для групповых команд.
+    """
+    if chat_id == user_id:
+        return False
+        
     try:
         member = bot.get_chat_member(chat_id, user_id)
+        
+        # Автоматическое добавление группы в базу, если её там нет
         if known_groups is not None and chat_id not in known_groups:
             known_groups.add(chat_id)
-            save_known_groups(known_groups)
-            print(f"✅ Группа {chat_id} добавлена")
+            save_known_group(chat_id, f"Группа {chat_id}")
+            log_info(f"✅ Группа {chat_id} добавлена в список известных")
+            
         return member.status in ['creator', 'administrator']
-    except Exception:
-        # НЕ удаляем группу из known_groups
+        
+    except telebot.apihelper.ApiTelegramException as e:
+        log_info(f"⚠️ Ошибка проверки админа в {chat_id}: {e.description}")
+        # Можно отправить сообщение в чат, если это критично:
+        # bot.send_message(chat_id, "⚠️ Ошибка связи с Telegram API. Попробуйте позже.")
         return False
-
-def is_bot_admin(chat_id):
-    """Проверяет, является ли бот администратором в группе"""
-    global bot
-    try:
-        me = bot.get_me()
-        member = bot.get_chat_member(chat_id, me.id)
-        return member.status in ['administrator', 'creator']
-    except:
+    except Exception as e:
+        log_info(f"❌ Непредвиденная ошибка в is_admin: {e}")
         return False
-
-def format_time_left(seconds):
-    """Форматирует оставшееся время"""
-    minutes = int(seconds // 60)
-    secs = int(seconds % 60)
-    return f"{minutes:02d}:{secs:02d}"
-
-def get_current_timestamp():
-    """Возвращает текущий timestamp"""
-    return time.time()
