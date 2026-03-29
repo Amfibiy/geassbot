@@ -1,1 +1,1 @@
-from .settings import BOT_TOKEN, COLLECTION_DURATION, DATA_DIR
+from .settings import BOT_TOKEN, COLLECTION_DURATION
