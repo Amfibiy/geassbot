@@ -26,32 +26,44 @@ def escape_markdown(text):
         text = text.replace(char, '\\' + char)
     return text
 
-def send_silent_mentions(bot, chat_id, thread_id):
-    """Фоновый поток: получает все ID из базы и рассылает невидимые теги пачками"""
+def send_silent_mentions(bot, chat_id, thread_id, is_test=False):
+
     user_ids = get_all_members_ids(chat_id)
     if not user_ids:
         log_info(f"В базе чата {chat_id} нет пользователей для тега.")
         return
 
-    invisible_char = "​" # U+200B Невидимый пробел
+    num_waves = 2 if is_test else 5
     
-    # Отправляем пачками по 5, чтобы не словить flood ban
-    for i in range(0, len(user_ids), 5):
-        chunk = user_ids[i:i + 5]
-        mentions = "".join([f"[{invisible_char}](tg://user?id={uid})" for uid in chunk])
+    avg = len(user_ids) / num_waves
+    waves = []
+    last = 0.0
+    while last < len(user_ids):
+        waves.append(user_ids[int(last):int(last + avg)])
+        last += avg
+
+    invisible_char = "​" 
+    
+    log_info(f"Начинаю рассылку тегов для {chat_id}: {len(user_ids)} чел., {num_waves} волн.")
+
+    for i, wave in enumerate(waves):
+        if not wave: continue
+        sub_chunks = [wave[x:x+40] for x in range(0, len(wave), 40)]
         
-        try:
-            bot.send_message(
-                chat_id=chat_id,
-                message_thread_id=thread_id,
-                text=f"📢 Внимание! Сбор!{mentions}",
-                parse_mode="Markdown",
-                disable_notification=False # Уведомление придет обязательно
-            )
-            time.sleep(4) # Обязательная пауза
-        except Exception as e:
-            log_info(f"❌ Ошибка отправки тегов: {e}")
-            break
+        for chunk in sub_chunks:
+            mentions = "".join([f"[{invisible_char}](tg://user?id={uid})" for uid in chunk])
+            try:
+                bot.send_message(
+                    chat_id=chat_id,
+                    message_thread_id=thread_id,
+                    text=f"📢 Сбор! Волна {i+1}/{num_waves}{mentions}",
+                    parse_mode="Markdown",
+                    disable_notification=False
+                )
+                time.sleep(3) 
+            except Exception as e:
+                log_info(f"❌ Ошибка в волне {i+1}: {e}")
+                continue
 
 def send_start_messages(bot, chat_id, thread_id, active_collections, admin_name):
     start_message = f"🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже"
@@ -151,8 +163,11 @@ def start_collection(message, bot, active_collections, test_collection, known_gr
     
     send_start_messages(bot, chat_id, thread_id, active_collections, admin_name)
 
-    # Запускаем фоновый тег участников
-    threading.Thread(target=send_silent_mentions, args=(bot, chat_id, thread_id), daemon=True).start()
+    threading.Thread(
+        target=send_silent_mentions, 
+        args=(bot, chat_id, thread_id, False), 
+        daemon=True
+    ).start()
 
     text, keyboard = create_counter_message(0, COLLECTION_DURATION)
     counter_message = bot.send_message(
@@ -253,8 +268,11 @@ def start_test_collection(message, bot, active_collections, test_collection, kno
     )
     test_collection[chat_id]['start_message_id'] = start_msg.message_id
 
-    # Запускаем фоновый тег участников
-    threading.Thread(target=send_silent_mentions, args=(bot, chat_id, thread_id), daemon=True).start()
+    threading.Thread(
+        target=send_silent_mentions, 
+        args=(bot, chat_id, thread_id, True), 
+        daemon=True
+    ).start()
     
     text, keyboard = create_counter_message(0, COLLECTION_DURATION)
     counter_msg = bot.send_message(
