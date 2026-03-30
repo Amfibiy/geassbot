@@ -8,6 +8,7 @@ import sys
 import os
 from flask import Flask, request
 from dotenv import load_dotenv
+import utils.helpers as helpers
 
 # Загрузка окружения
 load_dotenv()
@@ -18,7 +19,9 @@ from database.mongo import get_known_groups, save_known_group
 from handlers import register_all_handlers
 
 # Инициализация
-bot = telebot.TeleBot(BOT_TOKEN)
+TOKEN = os.getenv("BOT_TOKEN") 
+bot = telebot.TeleBot(TOKEN)
+helpers.bot = bot
 app = Flask(__name__)
 
 # Оперативные данные в памяти
