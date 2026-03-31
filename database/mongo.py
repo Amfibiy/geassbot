@@ -108,6 +108,10 @@ def load_history_for_chat(chat_id, start_ts=0, end_ts=None):
 def delete_history_records(chat_id, start_ts, end_ts):
     return history_col.delete_many({'chat_id': chat_id, 'timestamp': {'$gte': start_ts, '$lte': end_ts}}).deleted_count
 
+def clear_all_history():
+    """Полная очистка всей истории сборов"""
+    return history_col.delete_many({}).deleted_count
+
 def cleanup_old_history():
     quarter_ago = time.time() - (90 * 24 * 60 * 60)
     return history_col.delete_many({'timestamp': {'$lt': quarter_ago}}).deleted_count
