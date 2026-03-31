@@ -4,6 +4,7 @@ from .list_functions import (
     handle_period_callback
 )
 from utils.helpers import is_admin
+from .clean_functions import handle_cancel_clean
 
 def register_list_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
@@ -33,3 +34,6 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
     @bot.callback_query_handler(func=lambda call: call.data.startswith('period_'))
     def handle_period_callback_handler(call):
         handle_period_callback(call, bot, active_collections, test_collection, known_groups, user_sessions)
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_clean")
+    def cancel_cb(call):
+        handle_cancel_clean(call, bot)
