@@ -1,7 +1,7 @@
 import time
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from utils.helpers import is_admin, get_admin_groups, format_date
-from database.mongo import add_user_by_username, clear_all_members
+from database.mongo import add_user_by_username
 from handlers.collection_functions import start_collection, start_test_collection, stop_collection, update_collection_counter
 from database.mongo import add_user_by_username
 
@@ -35,7 +35,6 @@ def register_commands(bot, active_collections, test_collection):
             "• `/add @username` — Ручное добавление пользователя в базу.\n\n"
             "⚙️ **Системные**\n"
             "• `/start` — Узнать свой ID и запустить бота.\n"
-            "• `/db_reset_members` — Полная очистка списка участников чатов."
         )
         
         bot.send_message(message.chat.id, text, parse_mode="Markdown")
@@ -111,11 +110,6 @@ def register_commands(bot, active_collections, test_collection):
             kb.add(InlineKeyboardButton("🗑 Очистить историю", callback_data=f"clean_{target_id}"))
             bot.send_message(message.chat.id, f"📍 Группа: <code>{target_id}</code>", reply_markup=kb, parse_mode="HTML")
 
-    @bot.message_handler(commands=['db_reset_members'])
-    def cmd_reset(message):
-        if message.chat.type == 'private':
-            count = clear_all_members()
-            bot.reply_to(message, f"🗑 База участников сброшена ({count} зап.).")
 
     # Основные функции сбора (только для групп)
     @bot.message_handler(commands=['start_collect'])
