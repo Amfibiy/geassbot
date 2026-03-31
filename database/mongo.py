@@ -2,6 +2,7 @@ import os
 import time
 from pymongo import MongoClient
 
+# Настройка подключения
 MONGO_URL = os.getenv('MONGO_URI') or os.getenv('MONGO_URL')
 client = MongoClient(MONGO_URL)
 db = client['geassbot_db']
@@ -21,7 +22,6 @@ def save_known_group(chat_id, title):
     )
 
 def mark_group_inactive(chat_id):
-    """Помечает группу как неактивную (например, если бота удалили)"""
     groups_col.update_one(
         {'chat_id': chat_id},
         {'$set': {'active': False}}
@@ -30,13 +30,9 @@ def mark_group_inactive(chat_id):
 def get_known_groups():
     return list(groups_col.find({'active': True}))
 
-def get_known_groups_for_admin():
-    return get_known_groups()
-
 # --- РАБОТА С ПОЛЬЗОВАТЕЛЯМИ ---
 
 def save_user_id(chat_id, user_id, username=None, first_name=None):
-    """Обновляет ник и имя при любом действии пользователя"""
     now = time.time()
     username = username.lstrip('@') if username else None
 
@@ -62,10 +58,9 @@ def save_user_id(chat_id, user_id, username=None, first_name=None):
         )
 
 def get_all_members_ids(chat_id):
-    """Возвращает список ID всех участников чата из базы"""
     doc = members_col.find_one({'chat_id': chat_id})
     if doc and 'members' in doc:
-        return [m['user_id'] for m in doc['members'] if isinstance(m['user_id'], int)]
+        return [m['user_id'] for m in doc['members']]
     return []
 
 def add_user_by_username(chat_id, username, first_name=None):
@@ -92,24 +87,21 @@ def add_user_by_username(chat_id, username, first_name=None):
         )
     return True
 
-def clear_all_members():
-    return members_col.delete_many({}).deleted_count
-
 # --- ИСТОРИЯ СБОРА ---
 
 def save_history_record(record_data):
     record_data['timestamp'] = time.time()
     history_col.insert_one(record_data)
 
-def load_history_for_chat(chat_id, start_ts=0, end_ts=None):
-    if end_ts is None: end_ts = time.time()
-    return list(history_col.find({'chat_id': chat_id, 'timestamp': {'$gte': start_ts, '$lte': end_ts}}).sort('timestamp', -1))
+def load_history_for_chat(chat_id):
+    # Возвращаем историю, отсортированную по времени (сначала новые)
+    return list(history_col.find({'chat_id': chat_id}).sort('timestamp', -1))
 
-def delete_history_records(chat_id, start_ts, end_ts):
-    return history_col.delete_many({'chat_id': chat_id, 'timestamp': {'$gte': start_ts, '$lte': end_ts}}).deleted_count
+def delete_history_records(chat_id):
+    # Полная очистка истории для конкретного чата
+    return history_col.delete_many({'chat_id': chat_id}).deleted_count
 
 def clear_all_history():
-    """Полная очистка всей истории сборов"""
     return history_col.delete_many({}).deleted_count
 
 def cleanup_old_history():

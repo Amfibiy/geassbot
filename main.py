@@ -1,46 +1,32 @@
 import os
+import time
 from flask import Flask, request
 import telebot
-from telebot import apihelper # Импортируем помощник API
+from telebot import apihelper
 from database.mongo import cleanup_old_history, save_user_id
 from handlers import register_all_handlers
 
-# ШАГ 1: Включаем поддержку Middleware СТРОГО ДО инициализации бота
+# Включаем Middleware до создания бота
 apihelper.ENABLE_MIDDLEWARE = True
 
 TOKEN = os.getenv('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Хранилища в памяти
+# Хранилища
 active_collections = {}
 test_collection = {}
 known_groups = []
 user_sessions = {}
 
-# --- MIDDLEWARES (Авто-захват имен и ников) ---
-
+# --- MIDDLEWARES ---
 @bot.middleware_handler(update_types=['message'])
 def track_user_msg(bot_instance, message):
     if message.from_user:
         save_user_id(message.chat.id, message.from_user.id, 
                      message.from_user.username, message.from_user.first_name)
 
-# Реакции обрабатываются отдельно, так как это другой тип Update
-@bot.message_reaction_handler()
-def track_user_reac(message):
-    if message.user:
-        save_user_id(message.chat.id, message.user.id, 
-                     message.user.username, message.user.first_name)
-
-@bot.callback_query_handler(func=lambda call: True)
-def track_user_call(call):
-    save_user_id(call.message.chat.id, call.from_user.id, 
-                 call.from_user.username, call.from_user.first_name)
-    # Возвращаем False или просто ничего, чтобы другие хендлеры могли поймать этот колбэк
-    return
-
-# Регистрация всех обработчиков
+# Регистрация логики из handlers.py
 register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
 
 @app.route('/', methods=['GET', 'HEAD'])
@@ -59,9 +45,7 @@ if __name__ == "__main__":
     print(f"🧹 Автоочистка: удалено {cleanup_old_history()} записей.")
     
     bot.remove_webhook()
-    bot.set_webhook(
-        url="https://geassbot-1.onrender.com/webhook",
-        allowed_updates=['message', 'callback_query', 'message_reaction']
-    )
+    # Сюда вставь актуальную ссылку на свой Render
+    bot.set_webhook(url="https://geassbot-1.onrender.com/webhook")
     
     app.run(host="0.0.0.0", port=10000)

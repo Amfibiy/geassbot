@@ -3,6 +3,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from utils.helpers import is_admin, get_admin_groups, format_date
 from database.mongo import add_user_by_username, clear_all_members
 from handlers.collection_functions import start_collection, start_test_collection, stop_collection, update_collection_counter
+from database.mongo import add_user_by_username
 
 def register_commands(bot, active_collections, test_collection):
 
@@ -21,24 +22,23 @@ def register_commands(bot, active_collections, test_collection):
 
     @bot.message_handler(commands=['help'])
     def cmd_help(message):
-        # Проверка: работаем только в личке
+        # Игнорируем команду, если она написана в группе
         if message.chat.type != 'private':
             return
 
         text = (
-            "📖 <b>Справка по командам бота:</b>\n\n"
-            "<b>В группах (только для админов):</b>\n"
-            "/start_collect - Начать основной сбор\n"
-            "/test - Тестовый сбор (без уведомлений)\n"
-            "/stop - Остановить сбор\n"
-            "/add @nickname - Добавить игрока вручную\n\n"
-            "<b>В личных сообщениях:</b>\n"
-            "/list - Статистика групп\n"
-            "/clean - Выбор группы для очистки её истории\n"
-            "/db_reset_members - Сброс базы участников\n\n"
-            "<i>Автоочистка истории (старше 90 дней) работает автоматически.</i>"
+            "📖 **Справка по командам GeassBot:**\n\n"
+            "📊 **История и списки**\n"
+            "• `/list` — Просмотр истории сборов по периодам (сегодня, неделя и т.д.).\n"
+            "• `/clean` — Мгновенная очистка вашей истории периодов.\n\n"
+            "👤 **Участники**\n"
+            "• `/add @username` — Ручное добавление пользователя в базу.\n\n"
+            "⚙️ **Системные**\n"
+            "• `/start` — Узнать свой ID и запустить бота.\n"
+            "• `/db_reset_members` — Полная очистка списка участников чатов."
         )
-        bot.reply_to(message, text, parse_mode="HTML")
+        
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
     @bot.message_handler(commands=['list', 'clean'])
     def cmd_select_group(message):
@@ -132,3 +132,16 @@ def register_commands(bot, active_collections, test_collection):
     def c_st(m): 
         if m.chat.type != 'private':
             stop_collection(m, bot, active_collections, test_collection)
+    
+    @bot.message_handler(commands=['add'])
+    def handle_manual_add(message):
+        # Формат: /add @username
+        args = message.text.split()
+        if len(args) < 2:
+            bot.reply_to(message, "📂 **Формат:** `/add @username`", parse_mode="Markdown")
+            return
+        username = args[1].replace("@", "")
+        if add_user_by_username(message.chat.id, username):
+            bot.reply_to(message, f"✅ Пользователь `@{username}` добавлен в базу.", parse_mode="Markdown")
+        else:
+            bot.reply_to(message, "❌ Не удалось добавить (возможно, юзер уже есть).")
