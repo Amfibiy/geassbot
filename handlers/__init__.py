@@ -7,7 +7,7 @@ from .admin_handlers import register_admin_handlers
 
 def register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
-    register_commands(bot)
+    register_commands(bot, active_collections, test_collection)
     
     register_collection_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
     
