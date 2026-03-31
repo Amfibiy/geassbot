@@ -1,53 +1,45 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-import telebot
-import threading
-import time
-import sys
 import os
 from flask import Flask, request
-from dotenv import load_dotenv
-
-# Загрузка окружения
-load_dotenv()
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from config.settings import BOT_TOKEN
-from database.mongo import get_known_groups, save_known_group, cleanup_old_history
+import telebot
+from database.mongo import cleanup_old_history, save_user_id
 from handlers import register_all_handlers
-import utils.helpers as helpers
 
-# Инициализация
-TOKEN = os.getenv("BOT_TOKEN") 
+TOKEN = os.getenv('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
-helpers.bot = bot
 app = Flask(__name__)
 
-# Оперативные данные в памяти
+# Хранилища в памяти
 active_collections = {}
 test_collection = {}
+known_groups = []
 user_sessions = {}
-# Синхронизируем известные группы с MongoDB при старте
-known_groups = get_known_groups()
 
-# Регистрируем обработчики
+# --- MIDDLEWARES (Авто-захват имен и ников) ---
+
+@bot.middleware_handler(update_types=['message'])
+def track_user_msg(bot_instance, message):
+    if message.from_user:
+        save_user_id(message.chat.id, message.from_user.id, 
+                     message.from_user.username, message.from_user.first_name)
+
+@bot.message_reaction_handler()
+def track_user_reac(message):
+    if message.user:
+        save_user_id(message.chat.id, message.user.id, 
+                     message.user.username, message.user.first_name)
+
+@bot.callback_query_handler(func=lambda call: True)
+def track_user_call(call):
+    save_user_id(call.message.chat.id, call.from_user.id, 
+                 call.from_user.username, call.from_user.first_name)
+    # После сохранения данных Middleware НЕ останавливает процесс, 
+    # колбэк пойдет дальше в ваши хендлеры.
+
+# Регистрация всех обработчиков
 register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
 
-def update_counters():
-    """Фоновое обновление счётчиков в отдельном потоке"""
-    while True:
-        current_time = time.time()
-        for chat_id, collect in list(active_collections.items()):
-            from handlers.collection_functions import update_collection_counter
-            update_collection_counter(chat_id, collect, bot, current_time)
-        for chat_id, collect in list(test_collection.items()):
-            from handlers.collection_functions import update_test_counter
-            update_test_counter(chat_id, collect, bot, current_time)
-        time.sleep(30)
-
-# Запуск фонового потока
-threading.Thread(target=update_counters, daemon=True).start()
+@app.route('/', methods=['GET', 'HEAD'])
+def index(): return "OK", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -56,28 +48,15 @@ def webhook():
         update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
         return '', 200
-    return 'Forbidden', 403
-
-@app.route('/')
-def index():
-    return 'Bot is active on MongoDB (Webhook Mode)', 200
+    return '', 403
 
 if __name__ == "__main__":
-    # 1. АВТОМАТИЧЕСКАЯ ОЧИСТКА ПРИ ЗАПУСКЕ (раз в квартал)
-    try:
-        deleted_count = cleanup_old_history()
-        if deleted_count > 0:
-            print(f"🧹 Автоочистка: удалено {deleted_count} старых записей.")
-        else:
-            print("🧹 Автоочистка: старых записей не обнаружено.")
-    except Exception as e:
-        print(f"❌ Ошибка при автоочистке: {e}")
-
-    # 2. Настройка Webhook для Render
-    bot.remove_webhook()
-    webhook_url = 'https://geassbot-1.onrender.com/webhook'
-    bot.set_webhook(url=webhook_url, allowed_updates=['message', 'callback_query'])
+    print(f"🧹 Автоочистка: удалено {cleanup_old_history()} записей.")
     
-    # 3. Запуск сервера
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    bot.remove_webhook()
+    bot.set_webhook(
+        url="https://geassbot-1.onrender.com/webhook",
+        allowed_updates=['message', 'callback_query', 'message_reaction']
+    )
+    
+    app.run(host="0.0.0.0", port=10000)

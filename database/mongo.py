@@ -1,8 +1,6 @@
 import os
 import time
-from datetime import datetime, timedelta
 from pymongo import MongoClient
-import logging
 
 MONGO_URL = os.getenv('MONGO_URI') or os.getenv('MONGO_URL')
 client = MongoClient(MONGO_URL)
@@ -20,21 +18,18 @@ def save_known_group(chat_id, title):
     )
 
 def get_known_groups():
-    """Возвращает список всех активных групп"""
     return list(groups_col.find({'active': True}))
 
 def get_known_groups_for_admin():
-    """Синоним для хендлеров очистки и статистики"""
+    """Синоним для хендлеров статистики и очистки"""
     return get_known_groups()
 
-def mark_group_inactive(chat_id):
-    groups_col.update_one({'chat_id': chat_id}, {'$set': {'active': False}})
-
 def save_user_id(chat_id, user_id, username=None, first_name=None):
-    """Обновляет данные юзера по ID или добавляет нового"""
+    """Обновляет ник и имя при любом действии пользователя"""
     now = time.time()
     username = username.lstrip('@') if username else None
 
+    # Обновляем в массиве members конкретного чата
     result = members_col.update_one(
         {'chat_id': chat_id, 'members.user_id': user_id},
         {'$set': {
@@ -44,6 +39,7 @@ def save_user_id(chat_id, user_id, username=None, first_name=None):
         }}
     )
 
+    # Если пользователя еще нет в этом чате — добавляем
     if result.matched_count == 0:
         members_col.update_one(
             {'chat_id': chat_id},
@@ -57,7 +53,7 @@ def save_user_id(chat_id, user_id, username=None, first_name=None):
         )
 
 def add_user_by_username(chat_id, username, first_name=None):
-    """Ручное добавление в базу по нику"""
+    """Ручное добавление (пока пользователь не активен)"""
     if not username: return False
     username = username.lstrip('@')
     now = time.time()
@@ -81,43 +77,21 @@ def add_user_by_username(chat_id, username, first_name=None):
         )
     return True
 
-def get_all_members_ids(chat_id):
-    doc = members_col.find_one({'chat_id': chat_id})
-    if doc and 'members' in doc:
-        return [m['user_id'] for m in doc['members']]
-    return []
-
 def clear_all_members():
-    """ПОЛНАЯ ОЧИСТКА базы участников"""
     return members_col.delete_many({}).deleted_count
 
+# --- Функции истории ---
 def save_history_record(record_data):
     record_data['timestamp'] = time.time()
     history_col.insert_one(record_data)
 
 def load_history_for_chat(chat_id, start_ts=0, end_ts=None):
-    if end_ts is None:
-        end_ts = time.time()
-    query = {
-        'chat_id': chat_id,
-        'timestamp': {'$gte': start_ts, '$lte': end_ts}
-    }
-    return list(history_col.find(query).sort('timestamp', -1))
+    if end_ts is None: end_ts = time.time()
+    return list(history_col.find({'chat_id': chat_id, 'timestamp': {'$gte': start_ts, '$lte': end_ts}}).sort('timestamp', -1))
 
 def delete_history_records(chat_id, start_ts, end_ts):
-    query = {
-        'chat_id': chat_id,
-        'timestamp': {'$gte': start_ts, '$lte': end_ts}
-    }
-    result = history_col.delete_many(query)
-    return result.deleted_count
-
-def clear_all_history(chat_id):
-    result = history_col.delete_many({'chat_id': chat_id})
-    return result.deleted_count
+    return history_col.delete_many({'chat_id': chat_id, 'timestamp': {'$gte': start_ts, '$lte': end_ts}}).deleted_count
 
 def cleanup_old_history():
-    """Автоочистка истории старше 90 дней"""
     quarter_ago = time.time() - (90 * 24 * 60 * 60)
-    result = history_col.delete_many({'timestamp': {'$lt': quarter_ago}})
-    return result.deleted_count
+    return history_col.delete_many({'timestamp': {'$lt': quarter_ago}}).deleted_count
