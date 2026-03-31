@@ -1,9 +1,8 @@
 import datetime
 import time
-from database.mongo import delete_history_records, clear_all_history
+from database.mongo import delete_history_records, clear_all_history,get_known_groups
 from telebot import types
 from utils.validators import validate_date
-from mongo.py import get_known_groups
 
 def handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions):
     if message.chat.type != "private":
