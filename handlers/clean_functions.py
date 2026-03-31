@@ -104,28 +104,29 @@ def handle_clean_group_callback(call, bot, active_collections, test_collection, 
     bot.edit_message_text("Выберите, что именно нужно удалить:", 
                          call.message.chat.id, call.message.message_id, reply_markup=markup)
 
+from telebot import types
+
 def handle_clean_action_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Подтверждение удаления (финальный шаг перед очисткой)"""
-    # Формат: clean_action_ID_action
-    parts = call.data.split('_')
-    chat_id = parts[2]
-    action = parts[3]
-    
-    # Сохраняем данные в сессию, чтобы знать, что чистить после подтверждения
     user_id = call.from_user.id
+    parts = call.data.split('_')
+    action = parts[2] # today, yesterday, all
+    chat_id = int(parts[3])
+
+    # Запоминаем выбор в сессию
     if user_id not in user_sessions: user_sessions[user_id] = {}
-    
     user_sessions[user_id]['clean_chat_id'] = chat_id
     user_sessions[user_id]['clean_type'] = action
     
+    # Рисуем кнопки подтверждения
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("✅ Да, удалить", callback_data=f"confirm_clean_{chat_id}"))
     markup.add(types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_clean"))
     
-    bot.edit_message_text(f"⚠️ **Вы уверены?**\nЭто действие нельзя будет отменить.", 
-                         call.message.chat.id, call.message.message_id, 
-                         reply_markup=markup, parse_mode="Markdown")
-
+    bot.edit_message_text(
+        f"⚠️ **Вы уверены?**\nЭто действие удалит историю за выбранный период и его нельзя будет отменить.",
+        call.message.chat.id, call.message.message_id, 
+        reply_markup=markup, parse_mode="Markdown"
+    )
 def handle_confirm_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
     """Финальное выполнение очистки после подтверждения"""
     user_id = call.from_user.id
