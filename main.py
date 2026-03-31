@@ -1,8 +1,12 @@
 import os
 from flask import Flask, request
 import telebot
+from telebot import apihelper # Импортируем помощник API
 from database.mongo import cleanup_old_history, save_user_id
 from handlers import register_all_handlers
+
+# ШАГ 1: Включаем поддержку Middleware СТРОГО ДО инициализации бота
+apihelper.ENABLE_MIDDLEWARE = True
 
 TOKEN = os.getenv('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
@@ -22,6 +26,7 @@ def track_user_msg(bot_instance, message):
         save_user_id(message.chat.id, message.from_user.id, 
                      message.from_user.username, message.from_user.first_name)
 
+# Реакции обрабатываются отдельно, так как это другой тип Update
 @bot.message_reaction_handler()
 def track_user_reac(message):
     if message.user:
@@ -32,8 +37,8 @@ def track_user_reac(message):
 def track_user_call(call):
     save_user_id(call.message.chat.id, call.from_user.id, 
                  call.from_user.username, call.from_user.first_name)
-    # После сохранения данных Middleware НЕ останавливает процесс, 
-    # колбэк пойдет дальше в ваши хендлеры.
+    # Возвращаем False или просто ничего, чтобы другие хендлеры могли поймать этот колбэк
+    return
 
 # Регистрация всех обработчиков
 register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
