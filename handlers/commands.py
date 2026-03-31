@@ -8,6 +8,10 @@ def register_commands(bot, active_collections, test_collection):
 
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
+        # Проверка: работаем только в личке
+        if message.chat.type != 'private':
+            return 
+
         text = (
             f"👋 Привет, {message.from_user.first_name}!\n\n"
             f"Ваш ID: <code>{message.from_user.id}</code>\n\n"
@@ -17,18 +21,22 @@ def register_commands(bot, active_collections, test_collection):
 
     @bot.message_handler(commands=['help'])
     def cmd_help(message):
+        # Проверка: работаем только в личке
+        if message.chat.type != 'private':
+            return
+
         text = (
             "📖 <b>Справка по командам бота:</b>\n\n"
-            "<b>В группах:</b>\n"
+            "<b>В группах (только для админов):</b>\n"
             "/start_collect - Начать основной сбор\n"
             "/test - Тестовый сбор (без уведомлений)\n"
             "/stop - Остановить сбор\n"
             "/add @nickname - Добавить игрока вручную\n\n"
             "<b>В личных сообщениях:</b>\n"
             "/list - Статистика групп\n"
-            "/clean - Выбор группы для очистки её истории\n\n"
-            "<b>Сервис:</b>\n"
-            "/db_reset_members - Полный сброс базы участников"
+            "/clean - Выбор группы для очистки её истории\n"
+            "/db_reset_members - Сброс базы участников\n\n"
+            "<i>Автоочистка истории (старше 90 дней) работает автоматически.</i>"
         )
         bot.reply_to(message, text, parse_mode="HTML")
 
@@ -41,7 +49,7 @@ def register_commands(bot, active_collections, test_collection):
         admin_groups = get_admin_groups(message.from_user.id, bot)
         
         if not admin_groups:
-            return bot.reply_to(message, "❌ Вы не являетесь админом в группах.")
+            return bot.reply_to(message, "❌ Вы не являетесь админом в группах из моей базы.")
 
         res = f"📂 <b>Режим: {mode.upper()}</b>\nВыберите группу:\n\n"
         kb = InlineKeyboardMarkup()
@@ -57,6 +65,9 @@ def register_commands(bot, active_collections, test_collection):
 
     @bot.message_handler(commands=['add'])
     def cmd_add_manual(message):
+        if message.chat.type == 'private':
+            return bot.reply_to(message, "Эта команда работает только в группах.")
+            
         if not is_admin(message.chat.id, message.from_user.id, bot): return
             
         args = message.text.split()
@@ -106,12 +117,18 @@ def register_commands(bot, active_collections, test_collection):
             count = clear_all_members()
             bot.reply_to(message, f"🗑 База участников сброшена ({count} зап.).")
 
-    # Основные функции сбора
+    # Основные функции сбора (только для групп)
     @bot.message_handler(commands=['start_collect'])
-    def c_sc(m): start_collection(m, bot, active_collections, test_collection)
+    def c_sc(m): 
+        if m.chat.type != 'private':
+            start_collection(m, bot, active_collections, test_collection)
 
     @bot.message_handler(commands=['test'])
-    def c_t(m): start_test_collection(m, bot, active_collections, test_collection)
+    def c_t(m): 
+        if m.chat.type != 'private':
+            start_test_collection(m, bot, active_collections, test_collection)
 
     @bot.message_handler(commands=['stop'])
-    def c_st(m): stop_collection(m, bot, active_collections, test_collection)
+    def c_st(m): 
+        if m.chat.type != 'private':
+            stop_collection(m, bot, active_collections, test_collection)
