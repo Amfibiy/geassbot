@@ -11,6 +11,8 @@ members_col = db['chat_members']
 history_col = db['collection_history'] 
 groups_col = db['known_groups']         
 
+# --- РАБОТА С ГРУППАМИ ---
+
 def save_known_group(chat_id, title):
     groups_col.update_one(
         {'chat_id': chat_id},
@@ -18,11 +20,20 @@ def save_known_group(chat_id, title):
         upsert=True
     )
 
+def mark_group_inactive(chat_id):
+    """Помечает группу как неактивную (например, если бота удалили)"""
+    groups_col.update_one(
+        {'chat_id': chat_id},
+        {'$set': {'active': False}}
+    )
+
 def get_known_groups():
     return list(groups_col.find({'active': True}))
 
 def get_known_groups_for_admin():
     return get_known_groups()
+
+# --- РАБОТА С ПОЛЬЗОВАТЕЛЯМИ ---
 
 def save_user_id(chat_id, user_id, username=None, first_name=None):
     """Обновляет ник и имя при любом действии пользователя"""
@@ -50,12 +61,10 @@ def save_user_id(chat_id, user_id, username=None, first_name=None):
             upsert=True
         )
 
-# --- ТА САМАЯ НЕДОСТАЮЩАЯ ФУНКЦИЯ ---
 def get_all_members_ids(chat_id):
     """Возвращает список ID всех участников чата из базы"""
     doc = members_col.find_one({'chat_id': chat_id})
     if doc and 'members' in doc:
-        # Возвращаем только реальные ID (числа), игнорируя manual_ записи
         return [m['user_id'] for m in doc['members'] if isinstance(m['user_id'], int)]
     return []
 
@@ -86,7 +95,8 @@ def add_user_by_username(chat_id, username, first_name=None):
 def clear_all_members():
     return members_col.delete_many({}).deleted_count
 
-# --- Функции истории ---
+# --- ИСТОРИЯ СБОРА ---
+
 def save_history_record(record_data):
     record_data['timestamp'] = time.time()
     history_col.insert_one(record_data)
