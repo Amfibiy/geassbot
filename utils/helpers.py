@@ -5,12 +5,22 @@ from database.mongo import get_known_groups
 def is_admin(chat_id, user_id, bot):
     """Проверка, является ли пользователь админом в конкретной группе"""
     if chat_id == user_id: 
-        return False # В ЛС эта функция не работает, используем get_admin_groups
+        return False 
     try:
         member = bot.get_chat_member(chat_id, user_id)
         return member.status in ['creator', 'administrator']
     except Exception as e:
         logging.info(f"Ошибка проверки админа в {chat_id}: {e}")
+        return False
+
+def is_bot_admin(chat_id, bot):
+    """Проверка, является ли сам бот админом в группе"""
+    try:
+        me = bot.get_me()
+        member = bot.get_chat_member(chat_id, me.id)
+        return member.status == 'administrator'
+    except Exception as e:
+        logging.info(f"Ошибка проверки прав бота в {chat_id}: {e}")
         return False
 
 def get_admin_groups(user_id, bot):
