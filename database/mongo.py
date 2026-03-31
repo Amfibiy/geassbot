@@ -6,6 +6,7 @@ MONGO_URL = os.getenv('MONGO_URI') or os.getenv('MONGO_URL')
 client = MongoClient(MONGO_URL)
 db = client['geassbot_db']
 
+# Коллекции
 members_col = db['chat_members']       
 history_col = db['collection_history'] 
 groups_col = db['known_groups']         
@@ -21,7 +22,6 @@ def get_known_groups():
     return list(groups_col.find({'active': True}))
 
 def get_known_groups_for_admin():
-    """Синоним для хендлеров статистики и очистки"""
     return get_known_groups()
 
 def save_user_id(chat_id, user_id, username=None, first_name=None):
@@ -29,7 +29,6 @@ def save_user_id(chat_id, user_id, username=None, first_name=None):
     now = time.time()
     username = username.lstrip('@') if username else None
 
-    # Обновляем в массиве members конкретного чата
     result = members_col.update_one(
         {'chat_id': chat_id, 'members.user_id': user_id},
         {'$set': {
@@ -39,7 +38,6 @@ def save_user_id(chat_id, user_id, username=None, first_name=None):
         }}
     )
 
-    # Если пользователя еще нет в этом чате — добавляем
     if result.matched_count == 0:
         members_col.update_one(
             {'chat_id': chat_id},
@@ -52,8 +50,16 @@ def save_user_id(chat_id, user_id, username=None, first_name=None):
             upsert=True
         )
 
+# --- ТА САМАЯ НЕДОСТАЮЩАЯ ФУНКЦИЯ ---
+def get_all_members_ids(chat_id):
+    """Возвращает список ID всех участников чата из базы"""
+    doc = members_col.find_one({'chat_id': chat_id})
+    if doc and 'members' in doc:
+        # Возвращаем только реальные ID (числа), игнорируя manual_ записи
+        return [m['user_id'] for m in doc['members'] if isinstance(m['user_id'], int)]
+    return []
+
 def add_user_by_username(chat_id, username, first_name=None):
-    """Ручное добавление (пока пользователь не активен)"""
     if not username: return False
     username = username.lstrip('@')
     now = time.time()
