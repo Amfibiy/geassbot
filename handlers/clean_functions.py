@@ -1,9 +1,9 @@
 import datetime
 import time
 from database.mongo import delete_history_records, clear_all_history
-from database.mongo import get_known_groups_for_admin
 from telebot import types
 from utils.validators import validate_date
+from mongo.py import get_known_groups
 
 def handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions):
     if message.chat.type != "private":
@@ -11,7 +11,7 @@ def handle_clean(message, bot, active_collections, test_collection, known_groups
         return
 
     admin_id = message.from_user.id
-    admin_groups = get_known_groups_for_admin(admin_id, bot, known_groups)
+    admin_groups = {g['chat_id']: g.get('title', 'Группа') for g in get_known_groups()}
 
     if not admin_groups:
         bot.reply_to(message, "📭 У вас нет доступных групп для управления историей.")

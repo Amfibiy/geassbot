@@ -30,7 +30,6 @@ def mark_group_inactive(chat_id):
 def get_known_groups():
     return list(groups_col.find({'active': True}))
 
-# --- РАБОТА С ПОЛЬЗОВАТЕЛЯМИ ---
 
 def save_user_id(chat_id, user_id, username=None, first_name=None):
     now = time.time()
