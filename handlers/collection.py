@@ -8,7 +8,7 @@ from utils.helpers import is_admin
 
 def register_collection_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
-    @bot.message_handler(commands=['start_collect'])
+    @bot.message_handler(commands=['collect'])
     def handle_start(message):
         if not is_admin(message.chat.id, message.from_user.id):
             bot.reply_to(message, "❌ Только для администраторов группы")
