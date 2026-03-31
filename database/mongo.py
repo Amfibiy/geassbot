@@ -20,14 +20,18 @@ def save_known_group(chat_id, title):
     )
 
 def get_known_groups():
-    """Возвращает список словарей активных групп [{chat_id, title}, ...]"""
+    """Возвращает список всех активных групп"""
     return list(groups_col.find({'active': True}))
+
+def get_known_groups_for_admin():
+    """Синоним для хендлеров очистки и статистики"""
+    return get_known_groups()
 
 def mark_group_inactive(chat_id):
     groups_col.update_one({'chat_id': chat_id}, {'$set': {'active': False}})
 
 def save_user_id(chat_id, user_id, username=None, first_name=None):
-    """Обновляет ник существующего юзера по ID или добавляет нового"""
+    """Обновляет данные юзера по ID или добавляет нового"""
     now = time.time()
     username = username.lstrip('@') if username else None
 
@@ -53,7 +57,7 @@ def save_user_id(chat_id, user_id, username=None, first_name=None):
         )
 
 def add_user_by_username(chat_id, username, first_name=None):
-    """Ручное добавление в базу по нику (в любое время)"""
+    """Ручное добавление в базу по нику"""
     if not username: return False
     username = username.lstrip('@')
     now = time.time()
@@ -84,7 +88,7 @@ def get_all_members_ids(chat_id):
     return []
 
 def clear_all_members():
-    """ПОЛНАЯ ОЧИСТКА базы участников (для сброса структуры)"""
+    """ПОЛНАЯ ОЧИСТКА базы участников"""
     return members_col.delete_many({}).deleted_count
 
 def save_history_record(record_data):
@@ -113,7 +117,7 @@ def clear_all_history(chat_id):
     return result.deleted_count
 
 def cleanup_old_history():
-    """Автоочистка истории сборов старше 90 дней (квартал)"""
+    """Автоочистка истории старше 90 дней"""
     quarter_ago = time.time() - (90 * 24 * 60 * 60)
     result = history_col.delete_many({'timestamp': {'$lt': quarter_ago}})
     return result.deleted_count
