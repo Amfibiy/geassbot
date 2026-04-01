@@ -10,25 +10,29 @@ def register_collection_handlers(bot, active_collections, test_collection, known
     
     @bot.message_handler(commands=['collect'])
     def handle_start(message):
-        if not is_admin(message.chat.id, message.from_user.id):
+        if message.chat.type not in ['group', 'supergroup']: return
+        if not is_admin(message.chat.id, message.from_user.id, bot):
             bot.reply_to(message, "❌ Только для администраторов группы")
             return
         start_collection(message, bot, active_collections, test_collection, known_groups, user_sessions)
     
     @bot.message_handler(commands=['test'])
     def handle_test(message):
-        if not is_admin(message.chat.id, message.from_user.id):
+        if message.chat.type not in ['group', 'supergroup']: return
+        if not is_admin(message.chat.id, message.from_user.id, bot):
             bot.reply_to(message, "❌ Только для администраторов группы")
             return
         start_test_collection(message, bot, active_collections, test_collection, known_groups, user_sessions)
     
     @bot.message_handler(commands=['stop'])
     def handle_stop(message):
-        if not is_admin(message.chat.id, message.from_user.id):
+        if message.chat.type not in ['group', 'supergroup']: return
+        if not is_admin(message.chat.id, message.from_user.id, bot):
             bot.reply_to(message, "❌ Только для администраторов группы")
             return
         stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions)
-    
-    @bot.callback_query_handler(func=lambda call: call.data == "join")
-    def handle_join_button(call):
+
+    # Обработчик нажатия на кнопку "Присоединиться"
+    @bot.callback_query_handler(func=lambda call: call.data == 'join_collection')
+    def join_collection_callback(call):
         handle_join(call, bot, active_collections, test_collection, known_groups, user_sessions)

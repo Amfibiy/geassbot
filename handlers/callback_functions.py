@@ -2,27 +2,29 @@ import datetime
 import time
 from database.mongo import save_known_group, load_history_for_chat, save_user_id
 from utils.validators import validate_date, validate_id
-from database.mongo import save_history_record
-
 
 def handle_my_chat_member(update, bot, active_collections, test_collection, known_groups, user_sessions):
+    """Регистрация бота при добавлении в группу"""
     try:
         chat = update.chat
-        new_status = update.new_chat_member.status
-        if new_status in ['member', 'administrator'] and chat.type in ['group', 'supergroup']:
+        if update.new_chat_member.status in ['member', 'administrator'] and chat.type in ['group', 'supergroup']:
             chat_id = chat.id
-            chat_title = chat.title if chat.title else f"Группа {chat_id}"
+            chat_title = chat.title or f"Группа {chat_id}"
             if chat_id not in known_groups:
                 known_groups.add(chat_id)
                 save_known_group(chat_id, chat_title)
-                print(f"✅ Бот добавлен в группу: {chat_title} (ID: {chat_id})")
+                print(f"✅ Группа добавлена в базу: {chat_title}")
     except Exception as e:
-        print(f"❌ Ошибка в my_chat_member_handler: {e}")
+        print(f"❌ Ошибка в my_chat_member: {e}")
 
 def handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions):
+    """Логирование активности в группах"""
     try:
         chat_id = message.chat.id
-        
+        if chat_id not in known_groups:
+            known_groups.add(chat_id)
+            save_known_group(chat_id, message.chat.title or f"Группа {chat_id}")
+
         if not message.from_user.is_bot:
             save_user_id(
                 chat_id=chat_id,
@@ -30,290 +32,65 @@ def handle_group_message(message, bot, active_collections, test_collection, know
                 username=message.from_user.username,
                 first_name=message.from_user.first_name
             )
-        
-        chat_title = message.chat.title if message.chat.title else f"Группа {chat_id}"
-        if chat_id not in known_groups:
-            known_groups.add(chat_id)
-            save_known_group(chat_id, chat_title)
-            print(f"✅ Обнаружена группа через сообщение: {chat_title} (ID: {chat_id})")
     except Exception as e:
-        print(f"❌ Ошибка в group_message_handler: {e}")
+        print(f"❌ Ошибка в handle_group_message: {e}")
 
 def handle_private_text(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    user_id = message.from_user.id
-    if user_id not in user_sessions:
-        return
-    text = message.text.strip()
-    session = user_sessions.get(user_id)
-    
-    if not session:
-        bot.reply_to(message,
-            "❓ Используйте /list для просмотра групп\n"
-            "или /clean для очистки истории"
-        )
-        return
-    if session.get('step') == "wait_manual_name":
-        target_chat_id = session.get('chat_id')
-        name = message.text.strip()
-        
-        if not name:
-            bot.reply_to(message, "❌ Имя не может быть пустым.")
+    """Обработка текстовых ответов пользователя в ЛС"""
+    try:
+        user_id = message.from_user.id
+        if user_id not in user_sessions:
+            if message.text.lower() in ['привет', 'старт']:
+                bot.reply_to(message, "👋 Используйте /list для просмотра истории.")
             return
 
-        manual_record = {
-            'chat_id': target_chat_id,
-            'type': 'manual_entry',
-            'end_time': time.time(),
-            'participants': [{
-                'user_id': None, 
-                'first_name': name, 
-                'username': 'manual',
-                'join_time': time.time()
-            }]
-        }
-        
-        try:
-            save_history_record(manual_record)
-            bot.reply_to(message, f"✅ Участник **{name}** успешно добавлен в базу группы.")
+        session = user_sessions[user_id]
+        step = session.get('step')
+        chat_id = session.get('chat_id')
+
+        # Обработка ручного ввода диапазона дат
+        if step == "input_date_range":
+            text = message.text.strip()
             
-            session['step'] = "choice_period"
-            from .list_functions import show_menu_periods_in_ls
-            show_menu_periods_in_ls(message, session, bot)
-        except Exception as e:
-            bot.reply_to(message, f"❌ Ошибка сохранения: {e}")
-    elif session.get('step') == 'choice_group':
-        groups = session['groups']
-        try:
-            number = int(text)
-            if 1 <= number <= len(groups):
-                chat_id, name = groups[number-1]
-                session['chat_id'] = chat_id
-                session['name_group'] = name
-                session['step'] = 'choice_period'
-                from .list_functions import show_menu_periods_in_ls
-                show_menu_periods_in_ls(message, session, bot)
-            else:
-                target_id = number
-                found = False
-                for chat_id, name in groups:
-                    if chat_id == target_id:
-                        found = True
-                        session['chat_id'] = chat_id
-                        session['name_group'] = name
-                        session['step'] = 'choice_period'
-                        from .list_functions import show_menu_periods_in_ls
-                        show_menu_periods_in_ls(message, session, bot)
-                        break
-                if not found:
-                    bot.reply_to(message, "❌ Группа с таким ID не найдена")
-        except:
-            try:
-                digits = ''.join(c for c in text if c.isdigit())
-                if not digits:
-                    bot.reply_to(message, "❌ Неверный формат ID")
-                    return
-                target_id = int(digits)
-                found = False
-                for chat_id, name in groups:
-                    if abs(chat_id) == target_id:
-                        found = True
-                        session['chat_id'] = chat_id
-                        session['name_group'] = name
-                        session['step'] = 'choice_period'
-                        from .list_functions import show_menu_periods_in_ls
-                        show_menu_periods_in_ls(message, session, bot)
-                        break
-                if not found:
-                    bot.reply_to(message, "❌ Группа с таким ID не найдена")
-            except:
-                bot.reply_to(message, "❌ Введите номер из списка или ID группы")
-    
-    elif session.get('step') == 'choice_period':
-        try:
-            number = int(text)
-            chat_id = session['chat_id']
-            periods = {
-                1: ('текущий', None), 2: ('день', None), 3: ('вчера', None),
-                4: ('неделя', None), 5: ('месяц', None), 6: ('квартал', None),
-                7: ('год', None), 8: ('всё', None), 9: ('ожидание_периода', None)
-            }
-            if number in periods:
-                period, additional = periods[number]
-                if period == "текущий":
-                    if chat_id in active_collections:
-                        collect = active_collections[chat_id]
-                        from .list_functions import show_current_collection_in_group
-                        show_current_collection_in_group(message, collect, bot)
-                    else:
-                        bot.reply_to(message, "📭 Нет активного сбора")
-                elif period == 'вчера':
-                    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-                    date_str = yesterday.strftime('%d-%m-%Y')
-                    begin = yesterday.replace(hour=0, minute=0, second=0).timestamp()
-                    end = begin + 86400
-                    
-                    records = load_history_for_chat(chat_id, begin, end)
-                    all_participants = []
-                    for record in records:
-                        all_participants.extend(record.get('participants', []))
-                    
-                    if not all_participants:
-                        bot.reply_to(message, f"📭 Нет участников за {date_str}")
-                    else:
-                        from .list_functions import show_result_at_date
-                        show_result_at_date(message, chat_id, all_participants, date_str, session, bot)
-                    
-                    from .list_functions import show_menu_periods_in_ls
-                    show_menu_periods_in_ls(message, session, bot)
-                elif period == 'ожидание_периода':
-                    session['step'] = 'input_period'
-                    bot.reply_to(message, "📅 Введите период (ДД-ММ-ГГГГ - ДД-ММ-ГГГГ)")
-                else:
-                    from .list_functions import show_period_in_ls
-                    show_period_in_ls(message, chat_id, period, session, bot)
-            else:
-                bot.reply_to(message, "❌ Введите номер периода")
-        except:
-            bot.reply_to(message, "❌ Введите номер периода")
-    
-    elif session.get('step') == 'input_date':
-        chat_id = session['chat_id']
-        try:
-            date = validate_date(text)
-            if date:
-                begin = date.timestamp()
-                end = begin + 86400
-                
-                records = load_history_for_chat(chat_id, begin, end)
-                all_participants = []
-                for record in records:
-                    all_participants.extend(record.get('participants', []))
-                
-                if not all_participants:
-                    bot.reply_to(message, f"📭 Нет участников за {text}")
-                else:
-                    from .list_functions import show_result_at_date
-                    show_result_at_date(message, chat_id, all_participants, text, session, bot)
+            if text.lower() == '/cancel':
                 session['step'] = "choice_period"
                 from .list_functions import show_menu_periods_in_ls
                 show_menu_periods_in_ls(message, session, bot)
-            else:
-                bot.reply_to(message, "❌ Неверный формат. Используйте ДД-ММ-ГГГГ")
-        except:
-            bot.reply_to(message, "❌ Неверный формат. Используйте ДД-ММ-ГГГГ")
-    
-    elif session.get('step') == 'choice_group_clean':
-        groups = session['groups']
-        try:
-            number = int(text)
-            if 1 <= number <= len(groups):
-                chat_id, name, _ = groups[number-1]
-                session['chat_id'] = chat_id
-                session['name_group'] = name
-                session['step'] = 'choice_action_clean'
-                text_menu = f"🧹 *Очистка истории: {name}*\n\n*Выберите действие:*\n\n1️⃣ Удалить всё\n2️⃣ Удалить сегодня\n3️⃣ Удалить вчера\n4️⃣ Удалить за 7 дней\n5️⃣ Удалить за 30 дней\n6️⃣ Удалить за дату\n7️⃣ Удалить за период\n\n👇 Отправьте номер (1-7)"
-                bot.reply_to(message, text_menu, parse_mode="Markdown")
-            else:
-                valid_id = validate_id(text)
-                if valid_id:
-                    target_id = int(valid_id)
-                    found = False
-                    for cid, n, _ in groups:
-                        if cid == target_id or abs(cid) == target_id:
-                            found = True
-                            session['chat_id'] = cid
-                            session['name_group'] = n
-                            session['step'] = 'choice_action_clean'
-                            text_menu = f"🧹 *Очистка истории: {n}*\n\n*Выберите действие:*\n\n1️⃣ Удалить всё\n2️⃣ Удалить сегодня\n3️⃣ Удалить вчера\n4️⃣ Удалить за 7 дней\n5️⃣ Удалить за 30 дней\n6️⃣ Удалить за дату\n7️⃣ Удалить за период\n\n👇 Отправьте номер (1-7)"
-                            bot.reply_to(message, text_menu, parse_mode="Markdown")
-                            break
-                    if not found:
-                        bot.reply_to(message, "❌ Группа с таким ID не найдена")
-                else:
-                    bot.reply_to(message, "❌ Неверный формат ID")
-        except:
-            bot.reply_to(message, "❌ Введите номер из списка")
-    
-    elif session.get('step') == 'choice_action_clean':
-        try:
-            number = int(text)
-            action = {
-                1: ('всё', None), 2: ('сегодня', None), 3: ('вчера', None),
-                4: ('неделя', None), 5: ('месяц', None),
-                6: ('ожидание_даты_очистки', None), 7: ('ожидание_периода_очистки', None)
-            }
-            if number in action:
-                action_type, additional = action[number]
-                if action_type == 'ожидание_даты_очистки':
-                    session['step'] = 'input_date_clean'
-                    bot.reply_to(message, "📅 Введите дату для удаления (ДД-ММ-ГГГГ)")
-                elif action_type == 'ожидание_периода_очистки':
-                    session['step'] = 'input_period_clean'
-                    bot.reply_to(message, "📅 Введите период (ДД-ММ-ГГГГ - ДД-ММ-ГГГГ)")
-                else:
-                    session['wait'] = {'type': action_type, 'parameter': None}
-                    session['step'] = 'confirmation_clean'
-                    bot.reply_to(message, f"⚠️ Удалить {action_type}?\n✅ да\n❌ нет")
-            else:
-                bot.reply_to(message, "❌ Введите число от 1 до 7")
-        except:
-            bot.reply_to(message, "❌ Введите номер действия")
-    
-    elif session.get('step') == 'input_date_clean':
-        date = validate_date(text)
-        if date:
-            session['wait'] = {'type': 'дата', 'parameter': text}
-            session['step'] = 'confirmation_clean'
-            bot.reply_to(message, f"⚠️ Удалить записи за {text}?\n✅ да\n❌ нет")
-        else:
-            bot.reply_to(message, "❌ Неверный формат даты. Используйте ДД-ММ-ГГГГ")
-    
-    elif session.get('step') == 'input_period_clean':
-        session['wait'] = {'type': 'период', 'parameter': text}
-        session['step'] = 'confirmation_clean'
-        bot.reply_to(message, f"⚠️ Удалить записи за период {text}?\n✅ да\n❌ нет")
-    
-    elif session.get('step') == 'confirmation_clean':
-        if text.lower() in ['да', 'yes', 'y', '✅']:
-            from .clean_functions import do_clean
-            data = session['wait']
-            do_clean(message, session['chat_id'], data['type'], data['parameter'], bot)
-        else:
-            bot.reply_to(message, "❌ Очистка отменена")
-        del user_sessions[user_id]
-    
-    elif session.get('step') == 'input_period':
-        chat_id = session['chat_id']
-        try:
-            parts = text.split('-')
-            if len(parts) >= 6:
-                date1_str = f"{parts[0].strip()}-{parts[1].strip()}-{parts[2].strip()}"
-                date2_str = f"{parts[3].strip()}-{parts[4].strip()}-{parts[5].strip()}"
-                
-                date1 = validate_date(date1_str)
-                date2 = validate_date(date2_str)
-                
-                if date1 and date2:
-                    begin = date1.timestamp()
-                    end = date2.timestamp() + 86400
+                return
+
+            if " - " in text:
+                parts = text.split(" - ")
+                if len(parts) == 2:
+                    d1_str, d2_str = parts[0].strip(), parts[1].strip()
+                    d1 = validate_date(d1_str)
+                    d2 = validate_date(d2_str)
                     
-                    records = load_history_for_chat(chat_id, begin, end)
-                    all_participants = []
-                    for record in records:
-                        all_participants.extend(record.get('participants', []))
-                    
-                    if not all_participants:
-                        bot.reply_to(message, f"📭 Нет участников с {date1_str} по {date2_str}")
+                    if d1 and d2:
+                        begin = d1.timestamp()
+                        # Добавляем 23:59:59 к конечной дате
+                        end = d2.timestamp() + 86399
+                        
+                        records = load_history_for_chat(chat_id, begin, end)
+                        all_p = []
+                        for r in records:
+                            all_p.extend(r.get('participants', []))
+                        
+                        if not all_p:
+                            bot.send_message(message.chat.id, f"📭 За период {d1_str} — {d2_str} данных нет.")
+                        else:
+                            from .list_functions import show_result_by_date
+                            show_result_by_date(message, chat_id, all_p, d1_str, d2_str, session, bot)
+                        
+                        # После вывода результата возвращаем кнопки периодов
+                        session['step'] = "choice_period"
+                        from .list_functions import show_menu_periods_in_ls
+                        show_menu_periods_in_ls(message, session, bot)
                     else:
-                        from .list_functions import show_result_by_date
-                        show_result_by_date(message, chat_id, all_participants, date1_str, date2_str, session, bot)
-                    
-                    session['step'] = "choice_period"
-                    from .list_functions import show_menu_periods_in_ls
-                    show_menu_periods_in_ls(message, session, bot)
+                        bot.reply_to(message, "❌ Неверный формат дат. Нужно: ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
                 else:
-                    bot.reply_to(message, "❌ Неверный формат дат")
+                    bot.reply_to(message, "❌ Используйте формат: Дата1 - Дата2")
             else:
-                bot.reply_to(message, "❌ Неверный формат. Используйте ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
-        except Exception as e:
-            bot.reply_to(message, "❌ Неверный формат. Используйте ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
+                bot.reply_to(message, "✍️ Введите диапазон (напр. 01-03-2024 - 31-03-2024) или /cancel")
+
+    except Exception as e:
+        print(f"❌ Ошибка в handle_private_text: {e}")
