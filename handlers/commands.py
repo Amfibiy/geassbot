@@ -37,5 +37,4 @@ def register_commands(bot, active_collections, test_collection, known_groups, us
 
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and m.text.isdigit())
     def handle_numeric_input(message):
-        # Логика выбора группы цифрой из /list
         pass
