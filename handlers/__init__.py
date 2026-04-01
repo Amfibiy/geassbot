@@ -6,7 +6,7 @@ from .callbacks import register_callbacks
 
 def register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
-    register_commands(bot, active_collections, test_collection)
+    register_commands(bot, active_collections, test_collection, known_groups, user_sessions)
     
     register_collection_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
     
