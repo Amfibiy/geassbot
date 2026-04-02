@@ -5,6 +5,7 @@ import telebot
 from telebot import apihelper
 from database.mongo import cleanup_old_history, save_user_id
 from handlers import register_all_handlers
+from commands_setup import setup_bot_menu
 
 # Включаем Middleware до создания бота
 apihelper.ENABLE_MIDDLEWARE = True
@@ -12,6 +13,12 @@ apihelper.ENABLE_MIDDLEWARE = True
 TOKEN = os.getenv('BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
+
+# --- УСТАНОВКА КОНТЕКСТНОГО МЕНЮ КОМАНД ---
+try:
+    setup_bot_menu(bot)
+except Exception as e:
+    print(f"Ошибка установки меню: {e}")
 
 # Хранилища
 active_collections = {}
@@ -38,14 +45,5 @@ def webhook():
         json_string = request.get_data().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
-        return '', 200
-    return '', 403
-
-if __name__ == "__main__":
-    print(f"🧹 Автоочистка: удалено {cleanup_old_history()} записей.")
-    
-    bot.remove_webhook()
-    # Сюда вставь актуальную ссылку на свой Render
-    bot.set_webhook(url="https://geassbot-1.onrender.com/webhook")
-    
-    app.run(host="0.0.0.0", port=10000)
+        return "OK", 200
+    return "Unsupported Media Type", 415
