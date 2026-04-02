@@ -48,7 +48,18 @@ def handle_private_text(message, bot, active_collections, test_collection, known
                     show_menu_periods_in_ls(message, session, bot)
                 else:
                     bot.reply_to(message, "❌ Формат дат неверный. Попробуй: 01-01-2024 - 05-01-2024")
-            except:
-                bot.reply_to(message, "❌ Ошибка парсинга. Проверь пробелы и тире.")
+            except Exception as e:
+                bot.reply_to(message, f"❌ Произошла ошибка: {e}")
         else:
-            bot.reply_to(message, "✍️ Введите две даты через тире с пробелами.")
+            bot.reply_to(message, "✍️ Используйте формат: ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
+
+def register_callbacks(bot, active_collections, test_collection, known_groups, user_sessions):
+    """Главная функция для регистрации всех обработчиков сообщений"""
+
+    @bot.message_handler(func=lambda m: m.chat.type in ['group', 'supergroup'])
+    def group_msg(message):
+        handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions)
+
+    @bot.message_handler(func=lambda m: m.chat.type == 'private')
+    def private_msg(message):
+        handle_private_text(message, bot, active_collections, test_collection, known_groups, user_sessions)
