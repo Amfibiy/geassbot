@@ -108,4 +108,4 @@ if __name__ == "__main__":
         bot.polling(none_stop=True, timeout=60, interval=0)
     except Exception as e:
         print(f"❌ Ошибка: {e}")
-        time.sleep(5)ы
+        time.sleep(5)
