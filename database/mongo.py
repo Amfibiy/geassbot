@@ -81,3 +81,10 @@ def get_all_members_ids(chat_id):
     """Получает всех участников (используется в collection_functions.py)"""
     cursor = members_col.find({'chat_id': chat_id})
     return [{'id': m['user_id'], 'username': m.get('username')} for m in cursor if 'user_id' in m]
+
+def mark_group_inactive(chat_id):
+    """Помечает группу как неактивную (например, если бота удалили)"""
+    history_col.update_one(
+        {'chat_id': chat_id},
+        {'$set': {'is_active': False, 'last_activity': datetime.datetime.now()}}
+    )

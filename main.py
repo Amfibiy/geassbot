@@ -119,9 +119,10 @@ if __name__ == "__main__":
 
     print("✅ Все системы запущены. Ожидание сообщений...")
     
-    # 4. Запуск бота
-    try:
-        bot.polling(none_stop=True, timeout=60, interval=0)
-    except Exception as e:
-        print(f"❌ Ошибка Polling: {e}")
-        time.sleep(5)
+    # 4. Запуск бота (с бесконечным циклом перезапуска при сбоях сети)
+    while True:
+        try:
+            bot.polling(none_stop=True, timeout=60, interval=0)
+        except Exception as e:
+            print(f"❌ Ошибка Polling: {e}")
+            time.sleep(5)
