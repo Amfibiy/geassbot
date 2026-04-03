@@ -1,7 +1,5 @@
-import datetime
-import time
 from database.mongo import save_known_group, load_history_for_chat, save_user_id
-from utils.validators import validate_date, validate_id
+from utils.validators import validate_date
 
 def handle_my_chat_member(update, bot, active_collections, test_collection, known_groups, user_sessions):
     """Регистрация бота при добавлении в группу"""

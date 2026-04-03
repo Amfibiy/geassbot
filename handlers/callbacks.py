@@ -1,6 +1,4 @@
-import datetime
-import time
-from database.mongo import save_known_group, load_history_for_chat, save_user_id
+from database.mongo import load_history_for_chat, save_user_id
 from utils.validators import validate_date
 
 def handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions):
