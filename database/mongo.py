@@ -1,108 +1,70 @@
-import os
-import time
-from pymongo import MongoClient
+import pymongo
+import datetime
+from config.settings import MONGO_URI
 
-# Настройка подключения
-MONGO_URL = os.getenv('MONGO_URI') or os.getenv('MONGO_URL')
-client = MongoClient(MONGO_URL)
-db = client['geassbot_db']
+# Подключение к MongoDB
+client = pymongo.MongoClient(MONGO_URI)
+db = client['telegram_bot_db']
 
 # Коллекции
-members_col = db['chat_members']       
-history_col = db['collection_history'] 
-groups_col = db['known_groups']         
+history_col = db['collection_history']
+members_col = db['chat_members']
 
-# --- РАБОТА С ГРУППАМИ ---
+def save_history_record(collection_data):
+    """Сохраняет завершенный сбор в историю"""
+    record = {
+        'chat_id': collection_data['chat_id'],
+        'title': collection_data['title'],
+        'date': datetime.datetime.now(),
+        'participants': collection_data['participants'],
+        'count': len(collection_data['participants'])
+    }
+    history_col.insert_one(record)
 
-def save_known_group(chat_id, title):
-    groups_col.update_one(
+def get_history_records(chat_id, days=None):
+    """Получает историю сборов для конкретной группы"""
+    query = {'chat_id': chat_id}
+    if days:
+        cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+        query['date'] = {'$gte': cutoff}
+    
+    return list(history_col.find(query).sort('date', -1))
+
+def get_known_groups():
+    """Получает список всех групп, где был бот (для восстановления стейта)"""
+    pipeline = [
+        {"$group": {"_id": "$chat_id", "title": {"$first": "$title"}}},
+        {"$project": {"chat_id": "$_id", "title": 1, "_id": 0}}
+    ]
+    return list(history_col.aggregate(pipeline))
+
+def clear_history(chat_id=None):
+    """Очищает историю. Если chat_id не передан — чистит всё."""
+    if chat_id:
+        history_col.delete_many({'chat_id': chat_id})
+    else:
+        history_col.delete_many({})
+
+def save_user_id(chat_id, user_id, username, first_name):
+    """Сохраняет участника группы при его активности"""
+    members_col.update_one(
         {'chat_id': chat_id},
-        {'$set': {'title': title, 'active': True}},
+        {
+            '$addToSet': {
+                'members': {
+                    'user_id': user_id,
+                    'username': username,
+                    'first_name': first_name,
+                    'last_seen': datetime.datetime.now()
+                }
+            }
+        },
         upsert=True
     )
 
-def mark_group_inactive(chat_id):
-    groups_col.update_one(
-        {'chat_id': chat_id},
-        {'$set': {'active': False}}
-    )
-
-def get_known_groups():
-    return list(groups_col.find({'active': True}))
-
-
-def save_user_id(chat_id, user_id, username=None, first_name=None):
-    now = time.time()
-    username = username.lstrip('@') if username else None
-
-    result = members_col.update_one(
-        {'chat_id': chat_id, 'members.user_id': user_id},
-        {'$set': {
-            'members.$.username': username,
-            'members.$.first_name': first_name,
-            'members.$.last_seen': now
-        }}
-    )
-
-    if result.matched_count == 0:
-        members_col.update_one(
-            {'chat_id': chat_id},
-            {'$push': {'members': {
-                'user_id': user_id, 
-                'username': username, 
-                'first_name': first_name,
-                'last_seen': now
-            }}},
-            upsert=True
-        )
-
 def get_all_members_ids(chat_id):
+    """Возвращает список всех участников группы (для скрытых тегов)"""
     doc = members_col.find_one({'chat_id': chat_id})
     if doc and 'members' in doc:
-        return [m['user_id'] for m in doc['members']]
+        return doc['members']
     return []
-
-def add_user_by_username(chat_id, username, first_name=None):
-    if not username: return False
-    username = username.lstrip('@')
-    now = time.time()
-    
-    result = members_col.update_one(
-        {'chat_id': chat_id, 'members.username': username},
-        {'$set': {'members.$.last_seen': now}}
-    )
-
-    if result.matched_count == 0:
-        manual_id = f"manual_{username}"
-        members_col.update_one(
-            {'chat_id': chat_id},
-            {'$push': {'members': {
-                'user_id': manual_id, 
-                'username': username, 
-                'first_name': first_name or username,
-                'last_seen': now
-            }}},
-            upsert=True
-        )
-    return True
-
-# --- ИСТОРИЯ СБОРА ---
-
-def save_history_record(record_data):
-    record_data['timestamp'] = time.time()
-    history_col.insert_one(record_data)
-
-def load_history_for_chat(chat_id):
-    # Возвращаем историю, отсортированную по времени (сначала новые)
-    return list(history_col.find({'chat_id': chat_id}).sort('timestamp', -1))
-
-def delete_history_records(chat_id):
-    # Полная очистка истории для конкретного чата
-    return history_col.delete_many({'chat_id': chat_id}).deleted_count
-
-def clear_all_history():
-    return history_col.delete_many({}).deleted_count
-
-def cleanup_old_history():
-    quarter_ago = time.time() - (90 * 24 * 60 * 60)
-    return history_col.delete_many({'timestamp': {'$lt': quarter_ago}}).deleted_count
