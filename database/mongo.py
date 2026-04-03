@@ -79,3 +79,15 @@ def get_all_members_ids(chat_id):
     if doc and 'members' in doc:
         return doc['members']
     return []
+
+def mark_group_inactive(chat_id):
+    """Помечает группу как неактивную (например, если бота удалили)"""
+    history_col.update_one(
+        {'chat_id': chat_id},
+        {'$set': {'is_active': False, 'last_activity': datetime.datetime.now()}}
+    )
+
+def get_chat_settings(chat_id):
+    """Получает настройки конкретного чата (если они есть)"""
+    doc = members_col.find_one({'chat_id': chat_id})
+    return doc.get('settings', {}) if doc else {}
