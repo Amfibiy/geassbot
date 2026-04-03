@@ -19,20 +19,22 @@ def format_participants_list(participants):
     return text, count
 
 def show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Команда /list — показывает список доступных групп (только где юзер админ)"""
-    # Вызываем проверку: в каких известных боту группах этот человек - админ?
     admin_groups = get_admin_groups(message.from_user.id, bot)
     
     if not admin_groups:
-        bot.send_message(message.chat.id, "📭 У вас нет доступных групп, где вы являетесь администратором.")
+        bot.send_message(message.chat.id, "📭 **Список групп пуст.**\nДобавьте бота в группу и выдайте права администратора.")
         return
 
-    kb = types.InlineKeyboardMarkup()
-    for g in admin_groups:
-        kb.add(types.InlineKeyboardButton(text=g.get('title', 'Группа'), callback_data=f"list_group_{g['chat_id']}"))
+    text = "📋 **Ваши доступные группы:**\n\n"
+    markup = types.InlineKeyboardMarkup()
+    
+    for i, g in enumerate(admin_groups, 1):
+        title = g.get('title', 'Группа')
+        c_id = g.get('chat_id')
+        text += f"{i}. **{title}**\n└ `ID: {c_id}`\n\n"
+        markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"list_group_{c_id}"))
 
-    bot.send_message(message.chat.id, "📋 **Ваши группы:**\nВыберите группу для просмотра статистики:", 
-                     reply_markup=kb, parse_mode="Markdown")
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
 
 def show_menu_periods_in_ls(message, session, bot):
     """Вспомогательная функция для вывода меню периодов"""

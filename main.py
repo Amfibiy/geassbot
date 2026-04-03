@@ -7,6 +7,7 @@ import time
 import sys
 import os
 from flask import Flask
+from config.commands_setup import setup_bot_menu
 
 # 1. ИСПРАВЛЕНИЕ ПУТЕЙ (Самое важное для Render)
 # Находим путь к директории, где лежит этот файл (src или корень)
@@ -20,6 +21,7 @@ try:
     from config.settings import BOT_TOKEN, COLLECTION_DURATION
     from database.mongo import get_known_groups
     from handlers import register_all_handlers
+    
 except ImportError as e:
     print(f"❌ Ошибка импорта: {e}")
     # Выводим текущие пути, чтобы понять, где Python ищет файлы в логах Render
@@ -47,6 +49,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 active_collections = {}
 test_collection = {}
 user_sessions = {}
+setup_bot_menu(bot)
 
 # Пытаемся получить группы из базы (с обработкой ошибки подключения)
 try:

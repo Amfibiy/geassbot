@@ -2,24 +2,26 @@ import time
 from database.mongo import delete_history_records, clear_all_history, get_known_groups
 from telebot import types
 
-def handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    if message.chat.type != "private":
-        bot.reply_to(message, "❌ Эту команду нужно использовать в личных сообщениях боту.")
-        return
+from telebot import types
+from utils.helpers import get_admin_groups
 
-    admin_id = message.from_user.id
-    admin_groups = {g['chat_id']: g.get('title', 'Группа') for g in get_known_groups()}
+def handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions):
+    admin_groups = get_admin_groups(message.from_user.id, bot)
 
     if not admin_groups:
-        bot.reply_to(message, "📭 У вас нет доступных групп для управления историей.")
+        bot.reply_to(message, "📭 У вас нет групп для управления данными.")
         return
 
+    text = "🧹 **Очистка истории**\nВыберите номер группы для удаления данных:\n\n"
     markup = types.InlineKeyboardMarkup()
-    for g_id, g_title in admin_groups.items():
-        markup.add(types.InlineKeyboardButton(text=g_title, callback_data=f"clean_group_{g_id}"))
+    
+    for i, g in enumerate(admin_groups, 1):
+        title = g.get('title', 'Группа')
+        c_id = g.get('chat_id')
+        text += f"{i}. **{title}** (`{c_id}`)\n"
+        markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"clean_group_{c_id}"))
 
-    bot.send_message(message.chat.id, "🧹 **Очистка истории**\nВыберите группу для управления данными:", 
-                     reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
 def do_clean(message, chat_id, clean_type, parameter, bot):
     """Главная функция для выполнения очистки базы данных"""
     now = time.time()
