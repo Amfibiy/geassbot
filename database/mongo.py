@@ -68,3 +68,11 @@ def get_all_members_ids(chat_id):
     if doc and 'members' in doc:
         return doc['members']
     return []
+
+def save_known_group(chat_id, title):
+    """Сохраняет ID и название группы в базу данных"""
+    history_col.update_one(
+        {'chat_id': chat_id},
+        {'$set': {'title': title, 'last_activity': datetime.datetime.now()}},
+        upsert=True
+    )
