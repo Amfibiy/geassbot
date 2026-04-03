@@ -20,11 +20,9 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
         bot.reply_to(message, text, parse_mode="Markdown")
         return
 
-    # 1. Генерируем скрытые теги для уведомления участников
     member_ids = get_all_members_ids(chat_id)
     hidden_tags = "".join([f'<a href="tg://user?id={m_id}">\u200b</a>' for m_id in member_ids])
 
-    # 2. Формируем текст
     base_text = TEST_START_MSG if is_test else random.choice(START_MESSAGES)
     full_text = f"{base_text}{hidden_tags}"
 
@@ -46,21 +44,56 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
 
 def start_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     if message.chat.type == 'private':
-        bot.reply_to(message, "🏰 **Здесь спокойная гавань...**\n\nКоманда `/collect` работает только в группах. Перейдите в чат ордена, чтобы начать сбор! ⚔️", parse_mode="Markdown")
+        bot.reply_to(message, "🏰 **В ЛС нельзя запустить сбор.**")
         return
     _start_generic_collection(message, bot, active_collections, is_test=False)
 
 def start_test_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     if message.chat.type == 'private':
-        bot.reply_to(message, "🧪 **Лаборатория закрыта!**\n\nТестовые сборы проводятся только в полевых условиях (в группах).", parse_mode="Markdown")
+        bot.reply_to(message, "🧪 **В ЛС нельзя запустить тест.**")
         return
     _start_generic_collection(message, bot, test_collection, is_test=True)
+
+# ЭТОЙ ФУНКЦИИ НЕ ХВАТАЛО:
+def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
+    chat_id = message.chat.id
+    is_test = False
+    col = active_collections.pop(chat_id, None)
+    
+    if not col:
+        col = test_collection.pop(chat_id, None)
+        is_test = True
+
+    if col:
+        if not is_test:
+            save_history_record(col)
+        
+        text = "🏁 **Сбор остановлен вручную!**"
+        bot.send_message(chat_id, f"{text}\n👥 Собрано участников: {len(col['participants'])}", parse_mode="Markdown")
+    else:
+        bot.reply_to(message, "❌ Нет активных сборов для остановки.")
+
+# ЭТОЙ ФУНКЦИИ ТОЖЕ МОГЛО НЕ ХВАТАТЬ:
+def handle_join(call, bot, active_collections, test_collection, known_groups, user_sessions):
+    chat_id = call.message.chat.id
+    col = active_collections.get(chat_id) or test_collection.get(chat_id)
+
+    if not col:
+        bot.answer_callback_query(call.id, "❌ Сбор уже завершен.", show_alert=True)
+        return
+
+    user = call.from_user
+    if any(p['id'] == user.id for p in col['participants']):
+        bot.answer_callback_query(call.id, "✅ Вы уже в списке!")
+        return
+
+    col['participants'].append({'id': user.id, 'name': user.first_name, 'username': user.username})
+    bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы в деле!")
 
 def stop_collection_automatically(chat_id, bot, collection_dict, is_test):
     col = collection_dict.pop(chat_id, None)
     if col:
         if not is_test:
             save_history_record(col)
-        
-        text = "🏁 **Тестовый сбор завершен!**" if is_test else "🏁 **Сбор завершен!**"
-        bot.send_message(chat_id, f"{text}\n👥 Собрано участников: {len(col['participants'])}", parse_mode="Markdown")
+        text = "🏁 **Сбор завершен!**"
+        bot.send_message(chat_id, f"{text}\n👥 Итого собрано: {len(col['participants'])}", parse_mode="Markdown")
