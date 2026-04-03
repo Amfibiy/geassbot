@@ -8,13 +8,23 @@ import sys
 import os
 from flask import Flask
 
-# Добавляем путь к проекту
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# 1. ИСПРАВЛЕНИЕ ПУТЕЙ (Самое важное для Render)
+# Находим путь к директории, где лежит этот файл (src или корень)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Вставляем путь в самое начало, чтобы модули 'handlers' и 'database' точно нашлись
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
-# Импортируем настройки
-from config.settings import BOT_TOKEN, COLLECTION_DURATION
-from database.mongo import get_known_groups
-from handlers import register_all_handlers
+# Теперь импорты пойдут без ошибок
+try:
+    from config.settings import BOT_TOKEN, COLLECTION_DURATION
+    from database.mongo import get_known_groups
+    from handlers import register_all_handlers
+except ImportError as e:
+    print(f"❌ Ошибка импорта: {e}")
+    # Выводим текущие пути, чтобы понять, где Python ищет файлы в логах Render
+    print(f"Текущий sys.path: {sys.path}")
+    sys.exit(1)
 
 # --- СЕКЦИЯ FLASK (Для Render Web Service) ---
 app = Flask(__name__)
@@ -24,7 +34,9 @@ def index():
     return "Bot is running perfectly!"
 
 def run_flask():
-    port = int(os.environ.get("PORT", 5000))
+    # 2. ИСПРАВЛЕНИЕ ПОРТА
+    # Render сам передает нужный порт через переменную PORT
+    port = int(os.environ.get("PORT", 10000)) 
     app.run(host='0.0.0.0', port=port)
 
 # --- ИНИЦИАЛИЗАЦИЯ БОТА ---
@@ -35,7 +47,13 @@ bot = telebot.TeleBot(BOT_TOKEN)
 active_collections = {}
 test_collection = {}
 user_sessions = {}
-known_groups = {g['chat_id'] for g in get_known_groups()}
+
+# Пытаемся получить группы из базы (с обработкой ошибки подключения)
+try:
+    known_groups = {g['chat_id'] for g in get_known_groups()}
+except Exception as e:
+    print(f"⚠️ Предупреждение: Не удалось загрузить группы из БД: {e}")
+    known_groups = set()
 
 # Регистрируем хендлеры
 register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
@@ -45,8 +63,6 @@ def update_counters():
     while True:
         try:
             current_time = time.time()
-            
-            # Проходим по всем обычным сборам
             for chat_id, col in list(active_collections.items()):
                 elapsed_sec = int(current_time - col['start_time'])
                 rem_sec = max(0, COLLECTION_DURATION - elapsed_sec)
@@ -56,9 +72,11 @@ def update_counters():
                     rem_secs = rem_sec % 60
                     count = len(col['participants'])
                     
-                    # Формируем обновленный текст
                     markup = telebot.types.InlineKeyboardMarkup()
-                    markup.add(telebot.types.InlineKeyboardButton("✅ Стать первым участником" if count == 0 else "✅ Присоединиться", callback_data="join_collection"))
+                    markup.add(telebot.types.InlineKeyboardButton(
+                        "✅ Стать первым" if count == 0 else "✅ Присоединиться", 
+                        callback_data="join_collection"
+                    ))
                     
                     text = (
                         "📊 **Счётчики:**\n"
@@ -67,7 +85,6 @@ def update_counters():
                         "👇 Нажмите кнопку чтобы присоединиться"
                     )
                     
-                    # Обновляем сообщение (игнорируем ошибку, если текст не изменился)
                     try:
                         bot.edit_message_text(
                             chat_id=chat_id,
@@ -92,8 +109,7 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    # 2. Очищаем вебхук для надежного поллинга
-    print("🔄 Удаление вебхуков...")
+    # 2. Очищаем вебхук
     bot.remove_webhook()
     
     # 3. Запускаем фоновый счетчик
@@ -107,5 +123,5 @@ if __name__ == "__main__":
     try:
         bot.polling(none_stop=True, timeout=60, interval=0)
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Ошибка Polling: {e}")
         time.sleep(5)
