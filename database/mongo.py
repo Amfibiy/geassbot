@@ -21,17 +21,28 @@ def save_history_record(collection_data):
     }
     history_col.insert_one(record)
 
+def load_history_for_chat(chat_id):
+    """Загружает последние записи истории для конкретного чата"""
+    return list(history_col.find({'chat_id': chat_id}).sort('date', -1).limit(10))
+
 def get_history_records(chat_id, days=None):
-    """Получает историю сборов для конкретной группы"""
+    """Получает историю сборов (универсальная функция)"""
     query = {'chat_id': chat_id}
     if days:
         cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
         query['date'] = {'$gte': cutoff}
-    
     return list(history_col.find(query).sort('date', -1))
 
+def save_known_group(chat_id, title):
+    """Сохраняет ID и название группы в базу данных"""
+    history_col.update_one(
+        {'chat_id': chat_id},
+        {'$set': {'title': title, 'last_activity': datetime.datetime.now()}},
+        upsert=True
+    )
+
 def get_known_groups():
-    """Получает список всех групп, где был бот (для восстановления стейта)"""
+    """Получает список всех групп для восстановления состояния"""
     pipeline = [
         {"$group": {"_id": "$chat_id", "title": {"$first": "$title"}}},
         {"$project": {"chat_id": "$_id", "title": 1, "_id": 0}}
@@ -39,7 +50,7 @@ def get_known_groups():
     return list(history_col.aggregate(pipeline))
 
 def clear_history(chat_id=None):
-    """Очищает историю. Если chat_id не передан — чистит всё."""
+    """Очищает историю"""
     if chat_id:
         history_col.delete_many({'chat_id': chat_id})
     else:
@@ -63,16 +74,8 @@ def save_user_id(chat_id, user_id, username, first_name):
     )
 
 def get_all_members_ids(chat_id):
-    """Возвращает список всех участников группы (для скрытых тегов)"""
+    """Возвращает список всех участников группы"""
     doc = members_col.find_one({'chat_id': chat_id})
     if doc and 'members' in doc:
         return doc['members']
     return []
-
-def save_known_group(chat_id, title):
-    """Сохраняет ID и название группы в базу данных"""
-    history_col.update_one(
-        {'chat_id': chat_id},
-        {'$set': {'title': title, 'last_activity': datetime.datetime.now()}},
-        upsert=True
-    )
