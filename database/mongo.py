@@ -91,3 +91,14 @@ def get_chat_settings(chat_id):
     """Получает настройки конкретного чата (если они есть)"""
     doc = members_col.find_one({'chat_id': chat_id})
     return doc.get('settings', {}) if doc else {}
+
+def delete_history_records(chat_id):
+    """Синоним для clear_history, который ищут хендлеры"""
+    return clear_history(chat_id)
+
+def get_all_members_ids(chat_id):
+    """Возвращает список ID всех участников группы (если хендлеры ищут именно это название)"""
+    doc = members_col.find_one({'chat_id': chat_id})
+    if doc and 'members' in doc:
+        return [m['user_id'] for m in doc['members']]
+    return []
