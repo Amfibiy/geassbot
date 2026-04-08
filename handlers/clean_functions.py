@@ -1,156 +1,125 @@
 import time
-from database.mongo import delete_history_records, clear_all_history, get_known_groups
 from telebot import types
-
-from telebot import types
+from database.mongo import delete_history_records
 from utils.helpers import get_admin_groups
+from utils.validators import validate_id
 
 def handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions):
+    """Начало процесса очистки (выбор группы)"""
     admin_groups = get_admin_groups(message.from_user.id, bot)
-
-    if not admin_groups:
-        bot.reply_to(message, "📭 У вас нет групп для управления данными.")
-        return
-
-    text = "🧹 **Очистка истории**\nВыберите номер группы для удаления данных:\n\n"
-    markup = types.InlineKeyboardMarkup()
-    
-    for i, g in enumerate(admin_groups, 1):
-        title = g.get('title', 'Группа')
-        c_id = g.get('chat_id')
-        text += f"{i}. **{title}** (`{c_id}`)\n"
-        markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"clean_group_{c_id}"))
-
-    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
-def do_clean(message, chat_id, clean_type, parameter, bot):
-    """Главная функция для выполнения очистки базы данных"""
-    now = time.time()
-    
-    if clean_type == 'всё':
-        deleted = clear_all_history(chat_id)
-        bot.reply_to(message, f"✅ Вся история этой группы успешно удалена из базы.\nУдалено записей: {deleted}")
-        return
-    
-    begin = 0
-    end = now
-    
-    if clean_type == "сегодня":
-        today = datetime.datetime.now().replace(hour=0, minute=0, second=0)
-        begin = today.timestamp()
-        end = begin + 86400
-        
-    elif clean_type == "вчера":
-        yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-        begin = yesterday.replace(hour=0, minute=0, second=0).timestamp()
-        end = begin + 86400
-        
-    elif clean_type == "неделя":
-        begin = now - 604800
-        
-    elif clean_type == "месяц":
-        begin = now - 2592000
-        
-    elif clean_type == "дата" and parameter:
-        date_obj = validate_date(parameter)
-        if date_obj:
-            begin = date_obj.timestamp()
-            end = begin + 86400
-        else:
-            bot.reply_to(message, "❌ Ошибка: неверный формат даты.")
-            return
-            
-    elif clean_type == "период" and parameter:
-        try:
-            parts = parameter.split('-')
-            if len(parts) >= 6:
-                date1_str = f"{parts[0].strip()}-{parts[1].strip()}-{parts[2].strip()}"
-                date2_str = f"{parts[3].strip()}-{parts[4].strip()}-{parts[5].strip()}"
-                date1 = validate_date(date1_str)
-                date2 = validate_date(date2_str)
-                if date1 and date2:
-                    begin = date1.timestamp()
-                    end = date2.timestamp() + 86400
-                else:
-                    bot.reply_to(message, "❌ Ошибка: неверный формат дат.")
-                    return
-            else:
-                bot.reply_to(message, "❌ Ошибка: неверный формат периода.")
-                return
-        except Exception as e:
-            bot.reply_to(message, "❌ Произошла ошибка при разборе периода.")
-            return
-            
-    else:
-        bot.reply_to(message, "❌ Неизвестный тип очистки.")
-        return
-    deleted = delete_history_records(chat_id, begin, end)
-    bot.reply_to(message, f"✅ Очистка завершена. Удалено записей: {deleted}")
-
-def handle_clean_group_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
-    user_id = call.from_user.id
-    chat_id = int(call.data.replace("clean_group_", ""))
+    user_id = message.from_user.id
     
     if user_id not in user_sessions:
         user_sessions[user_id] = {}
-    user_sessions[user_id]['clean_chat_id'] = chat_id
-    
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("Сегодня", callback_data="clean_action_today"),
-        types.InlineKeyboardButton("Вчера", callback_data="clean_action_yesterday")
-    )
-    markup.add(
-        types.InlineKeyboardButton("Неделя", callback_data="clean_action_week"),
-        types.InlineKeyboardButton("Месяц", callback_data="clean_action_month")
-    )
-    markup.add(types.InlineKeyboardButton("За всё время", callback_data="clean_action_all"))
-    markup.add(types.InlineKeyboardButton("Ввести вручную", callback_data="clean_action_manual"))
-    
-    bot.edit_message_text("🧹 **Выберите период для очистки:**", 
-                          call.message.chat.id, call.message.message_id, 
-                          reply_markup=markup, parse_mode="Markdown")
 
-def handle_clean_action_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Подтверждение удаления (финальный шаг перед очисткой)"""
-    # Формат: clean_action_ID_action
-    parts = call.data.split('_')
-    chat_id = parts[2]
-    action = parts[3]
+    text = "🧹 <b>Выберите группу для очистки:</b>\n\n"
+    markup = types.InlineKeyboardMarkup()
     
-    # Сохраняем данные в сессию, чтобы знать, что чистить после подтверждения
+    if admin_groups:
+        for i, g in enumerate(admin_groups, 1):
+            title = g.get('title', 'Группа')
+            c_id = g.get('chat_id')
+            text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
+            markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"clean_group_{c_id}"))
+    else:
+        text += "<i>Список администрируемых групп пуст.</i>\n"
+
+    text += "\n👇 <b>Нажмите на кнопку выше</b>\nили отправьте ID группы (включая минус) вручную:"
+    
+    user_sessions[user_id]['step'] = "clean_wait_id"
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+
+def handle_clean_group_id_input(message, bot, user_sessions):
+    """Обработка ручного ввода ID группы для очистки"""
+    user_id = message.from_user.id
+    chat_id = validate_id(message.text)
+    
+    if not chat_id:
+        bot.reply_to(message, "❌ Неверный формат ID. Попробуйте еще раз или используйте /clean")
+        return
+
+    # Переходим к выбору действия для этого ID
+    show_clean_actions(message.chat.id, chat_id, "Введенная группа", bot, user_sessions, user_id)
+
+def show_clean_actions(chat_to_send, target_chat_id, group_name, bot, user_sessions, user_id):
+    """Показ меню выбора периода очистки"""
+    user_sessions[user_id]['clean_chat_id'] = target_chat_id
+    
+    text = f"""🧹 *Очистка истории: {group_name}*
+
+*Выберите действие:*
+
+1️⃣ Удалить всё
+2️⃣ Удалить за сегодня
+3️⃣ Удалить за вчера
+4️⃣ Удалить за последние 7 дней
+5️⃣ Удалить за последние 30 дней
+6️⃣ Удалить за конкретную дату
+7️⃣ Удалить за период (дата1 - дата2)
+
+👇 Отправьте номер действия (1-7) или нажмите кнопку:"""
+
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    buttons = [
+        types.InlineKeyboardButton("1️⃣ Всё", callback_data="clean_action_all"),
+        types.InlineKeyboardButton("2️⃣ Сегодня", callback_data="clean_action_today"),
+        types.InlineKeyboardButton("3️⃣ Вчера", callback_data="clean_action_yesterday"),
+        types.InlineKeyboardButton("4️⃣ 7 дней", callback_data="clean_action_7days"),
+        types.InlineKeyboardButton("5️⃣ 30 дней", callback_data="clean_action_30days")
+    ]
+    markup.add(*buttons)
+    
+    user_sessions[user_id]['step'] = "clean_wait_action"
+    bot.send_message(chat_to_send, text, reply_markup=markup, parse_mode="Markdown")
+
+def handle_confirm_clean(call, bot, user_sessions):
+    """Подтверждение удаления"""
     user_id = call.from_user.id
-    if user_id not in user_sessions: user_sessions[user_id] = {}
-    
-    user_sessions[user_id]['clean_chat_id'] = chat_id
-    user_sessions[user_id]['clean_type'] = action
+    session = user_sessions.get(user_id, {})
+    chat_id = session.get('clean_chat_id')
     
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ Да, удалить", callback_data=f"confirm_clean_{chat_id}"))
-    markup.add(types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_clean"))
+    markup.add(
+        types.InlineKeyboardButton("✅ Да, удалить", callback_data=f"do_actual_clean"),
+        types.InlineKeyboardButton("❌ Отмена", callback_data="cancel_clean")
+    )
     
-    bot.edit_message_text(f"⚠️ **Вы уверены?**\nЭто действие нельзя будет отменить.", 
-                         call.message.chat.id, call.message.message_id, 
-                         reply_markup=markup, parse_mode="Markdown")
+    bot.edit_message_text(
+        f"⚠️ **Вы уверены, что хотите очистить историю для ID `{chat_id}`?**\nЭто действие необратимо.",
+        call.message.chat.id, 
+        call.message.message_id,
+        reply_markup=markup, 
+        parse_mode="Markdown"
+    )
 
-def handle_confirm_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Финальное выполнение очистки после подтверждения"""
+def execute_delete(call, bot, user_sessions):
+    """Финальное удаление из БД после подтверждения"""
     user_id = call.from_user.id
     session = user_sessions.get(user_id, {})
     
     chat_id = session.get('clean_chat_id')
-    clean_type = session.get('clean_type')
+    action = session.get('clean_type') # Получаем тип: 'all', 'today', '7days' и т.д.
     
-    if not chat_id or not clean_type:
-        bot.answer_callback_query(call.id, "❌ Ошибка сессии. Попробуйте заново.")
+    if not chat_id or not action:
+        bot.answer_callback_query(call.id, "❌ Ошибка: данные сессии потеряны.", show_alert=True)
         return
-    do_clean(call.message, chat_id, clean_type, None, bot)
-    
-    session.pop('clean_chat_id', None)
-    session.pop('clean_type', None)
-    
-    bot.edit_message_text("✅ Данные успешно удалены.", call.message.chat.id, call.message.message_id)
 
-def handle_cancel_clean(call, bot):
-    """Отмена операции очистки"""
-    bot.edit_message_text("❌ Операция отменена.", call.message.chat.id, call.message.message_id)
-    bot.answer_callback_query(call.id, "Отменено")
+    try:
+        # 1. Раскомментируем и вызываем реальное удаление
+        # В mongo.py функция delete_history_records принимает chat_id и тип периода
+        delete_history_records(chat_id, action) 
+        
+        # 2. Обновляем сообщение для пользователя
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"✅ **Очистка завершена!**\n\nВсе записи типа `{action}` для группы `{chat_id}` были удалены.",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Ошибка при удалении: {e}")
+        bot.answer_callback_query(call.id, "❌ Произошла ошибка при обращении к базе данных.", show_alert=True)
+    
+    # Сбрасываем сессию
+    session['step'] = None
+    session.pop('clean_type', None)

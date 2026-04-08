@@ -62,19 +62,56 @@ except Exception as e:
 register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
 
 def update_counters():
-    """Фоновый поток для автоматической остановки сборов по таймеру"""
+    """Фоновый поток для обновления счетчиков и авто-стопа"""
     while True:
         try:
             for coll_dict in [active_collections, test_collection]:
                 for chat_id in list(coll_dict.keys()):
                     col = coll_dict[chat_id]
                     elapsed = int(time.time() - col['start_time'])
-                    
+                    rem = max(0, COLLECTION_DURATION - elapsed)
+
                     if elapsed >= COLLECTION_DURATION:
                         from handlers.collection_functions import stop_collection_automatically
                         stop_collection_automatically(chat_id, bot, coll_dict, coll_dict is test_collection)
+                    else:
+                        # ОБНОВЛЕНИЕ ТЕКСТА СЧЕТЧИКА (Новый стиль)
+                        minutes_left = rem // 60
+                        seconds_left = rem % 60
+                        
+                        # Формируем список имен
+                        if col['participants']:
+                            members_text = "\n".join([f"{i+1}. {p['name']}" for i, p in enumerate(col['participants'])])
+                        else:
+                            members_text = "Пока никто не присоединился..."
+
+                        new_text = f"""📊 *Счётчики:*
+{members_text}
+
+⏰ Осталось времени: {minutes_left:02d}:{seconds_left:02d}
+
+👇 Нажмите кнопку чтобы присоединиться"""
+                        
+                        # Обновляем кнопку с текущим кол-вом
+                        from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+                        markup = InlineKeyboardMarkup()
+                        markup.add(InlineKeyboardButton(f"✅ Присоединиться ({len(col['participants'])})", callback_data="join_collection"))
+
+                        try:
+                            bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=col['main_message_id'],
+                                text=new_text,
+                                reply_markup=markup,
+                                parse_mode="Markdown"
+                            )
+                        except Exception as e:
+                            # Игнорируем ошибку, если текст не изменился
+                            if "message is not modified" not in str(e):
+                                print(f"⚠️ Ошибка обновления счетчика: {e}")
+
         except Exception as e:
-            print(f"❌ Ошибка счетчика: {e}")
+            print(f"❌ Ошибка в цикле счетчика: {e}")
         time.sleep(30)
 
 # --- ЗАПУСК ПОТОКОВ ---

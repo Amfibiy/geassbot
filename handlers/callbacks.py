@@ -31,7 +31,8 @@ def handle_private_text(message, bot, active_collections, test_collection, known
                 
                 if d1 and d2:
                     begin = d1.timestamp()
-                    end = d2.timestamp() + 86399 # До конца дня
+                    # Делаем конец дня для второй даты (23:59:59)
+                    end = d2.replace(hour=23, minute=59, second=59).timestamp()
                     
                     records = load_history_for_chat(chat_id, begin, end)
                     all_p = []
@@ -54,10 +55,12 @@ def handle_private_text(message, bot, active_collections, test_collection, known
 def register_callbacks(bot, active_collections, test_collection, known_groups, user_sessions):
     """Главная функция для регистрации всех обработчиков сообщений"""
 
+    # Слушаем все текстовые сообщения в группах
     @bot.message_handler(func=lambda m: m.chat.type in ['group', 'supergroup'])
     def group_msg(message):
         handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions)
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private')
+    # Слушаем ручной ввод текста в ЛС (исключая команды и ID)
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and not (m.text.startswith('/') or m.text.startswith('-') or m.text.isdigit()))
     def private_msg(message):
         handle_private_text(message, bot, active_collections, test_collection, known_groups, user_sessions)

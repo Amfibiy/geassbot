@@ -8,57 +8,97 @@ from utils.messages import START_MESSAGES, TEST_START_MSG, COLLECT_ALREADY_RUNNI
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
     
+    # Если сбор уже запущен
     if chat_id in collection_dict:
         col = collection_dict[chat_id]
         elapsed = int(time.time() - col['start_time'])
+        minutes_pass = elapsed // 60
         rem = max(0, COLLECTION_DURATION - elapsed)
-        text = COLLECT_ALREADY_RUNNING.format(
-            count=len(col['participants']),
-            elapsed=elapsed // 60,
-            remaining=f"{rem // 60:02d}:{rem % 60:02d}"
-        )
-        bot.reply_to(message, text, parse_mode="Markdown")
+        
+        status_text = f"""⚠️ *Активный сбор уже идёт!*
+
+📊 *Текущий статус:*
+👥 Участников: {len(col['participants'])}
+⏱️ Прошло времени: {minutes_pass} мин
+⏰ Осталось: {rem // 60:02d}:{rem % 60:02d}
+
+💡 *Команды для управления:*
+/list - Статистика сбора
+/stop - Завершить сбор досрочно
+
+❌ *Новый сбор можно запустить только после завершения текущего.*"""
+        
+        bot.reply_to(message, status_text, parse_mode="Markdown")
         return
 
-    # Получаем ID всех участников
+    # Подготовка тегов (mention_text)
     member_ids = get_all_members_ids(chat_id)
     tags = [f'<a href="tg://user?id={m_id}">\u200b</a>' for m_id in member_ids]
+    mention_text = "".join(tags)
 
-    # Определяем количество сообщений
-    num_messages = 3 if is_test else 5
+    # Тексты сообщений
+    if is_test:
+        msgs = [
+            f"{mention_text}🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут\n👇 Нажмите для теста"
+        ]
+    else:
+        msgs = [
+            f"{mention_text}🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже",
+            f"{mention_text}🎮 *Готовы к сбору?* 🎮\n\n🏃‍♂️ Не откладывайте на потом!\n🔥 Присоединяйтесь сейчас!",
+            f"{mention_text}🌟 *Не пропустите!* 🌟\n\n⏱️ Время ограничено!\n👥 Соберитесь вместе!",
+            f"{mention_text}💥 *Последний звонок!* 💥\n\n✅ Успейте присоединиться!\n🎁 Возможность для всех!"
+        ]
+
+    # Отправка цепочки сообщений
+    for m_text in msgs:
+        bot.send_message(chat_id, m_text, parse_mode="HTML")
+        time.sleep(0.5)
+
+    # Основное сообщение со счётчиком
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
     
-    # Разбиваем теги на равные части, чтобы впихнуть в лимиты Telegram
-    chunk_size = max(1, len(tags) // num_messages + 1)
-    tag_chunks = [tags[i:i + chunk_size] for i in range(0, len(tags), chunk_size)]
-    while len(tag_chunks) < num_messages:
-        tag_chunks.append([])
+    main_text = f"""📊 *Счётчики:*
+Пока никто не присоединился...
+⏰ Осталось времени: 30:00
 
-    main_msg = None
+👇 Нажмите кнопку чтобы присоединиться"""
 
-    # Отправляем 3 или 5 сообщений
-    for i in range(num_messages):
-        is_last = (i == num_messages - 1)
-        base_text = TEST_START_MSG if is_test else random.choice(START_MESSAGES)
-        hidden_str = "".join(tag_chunks[i])
-        full_text = f"{base_text}{hidden_str}"
-        
-        if is_last:
-            # На последнее сообщение вешаем кнопку
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("✅ Присоединиться", callback_data="join_collection"))
-            main_msg = bot.send_message(chat_id, full_text, reply_markup=markup, parse_mode="HTML")
-        else:
-            bot.send_message(chat_id, full_text, parse_mode="HTML")
-            time.sleep(0.5)
-
-    # Сохраняем сбор
+    main_msg = bot.send_message(chat_id, main_text, reply_markup=markup, parse_mode="Markdown")
+    
+    # Регистрация сбора в памяти
     collection_dict[chat_id] = {
         'start_time': time.time(),
+        'main_message_id': main_msg.message_id,
         'participants': [],
-        'main_message_id': main_msg.message_id, # ID сообщения с кнопкой
         'title': message.chat.title,
-        'chat_id': chat_id
+        'mention_text': mention_text
     }
+
+def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
+    """Ручная остановка"""
+    chat_id = message.chat.id
+    is_test = False
+    col = active_collections.pop(chat_id, None)
+    if not col:
+        col = test_collection.pop(chat_id, None)
+        is_test = True
+    
+    if not col:
+        bot.reply_to(message, "❌ Нет активного сбора для остановки.")
+        return
+
+    quantity = len(col['participants'])
+    final_text = f"""✅ *Сбор завершён!*
+        
+👥 Участников: {quantity}
+⏰ Завершено досрочно
+{'🎉 Спасибо!' if quantity > 0 else '😔 Никто не присоединился'}"""
+
+    bot.send_message(chat_id, final_text, parse_mode="Markdown")
+    
+    if not is_test and quantity > 0:
+        save_history_record(col)
 
 def start_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     if message.chat.type == 'private':
@@ -71,23 +111,6 @@ def start_test_collection(message, bot, active_collections, test_collection, kno
         bot.reply_to(message, "🧪 **В ЛС нельзя запустить тест.**")
         return
     _start_generic_collection(message, bot, test_collection, is_test=True)
-
-def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    chat_id = message.chat.id
-    is_test = False
-    col = active_collections.pop(chat_id, None)
-    
-    if not col:
-        col = test_collection.pop(chat_id, None)
-        is_test = True
-
-    if col:
-        if not is_test:
-            save_history_record(col)
-        text = "🏁 **Сбор остановлен вручную!**"
-        bot.send_message(chat_id, f"{text}\n👥 Собрано участников: {len(col['participants'])}", parse_mode="Markdown")
-    else:
-        bot.reply_to(message, "❌ Нет активных сборов для остановки.")
 
 def handle_join(call, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = call.message.chat.id
@@ -121,10 +144,21 @@ def handle_join(call, bot, active_collections, test_collection, known_groups, us
 
     bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы в деле!")
 
-def stop_collection_automatically(chat_id, bot, collection_dict, is_test):
-    col = collection_dict.pop(chat_id, None)
-    if col:
-        if not is_test:
-            save_history_record(col)
-        text = "🏁 **Сбор завершен!**"
-        bot.send_message(chat_id, f"{text}\n👥 Итого собрано: {len(col['participants'])}", parse_mode="Markdown")
+def stop_collection_automatically(chat_id, bot, coll_dict, is_test):
+    col = coll_dict.pop(chat_id, None)
+    if not col: return
+
+    quantity = len(col['participants'])
+    
+    # Твой новый текст для завершения
+    final_text = f"""✅ *Сбор завершён!*
+        
+👥 Участников: {quantity}
+⏰ Время вышло
+{'🎉 Спасибо!' if quantity > 0 else '😔 Никто не присоединился'}"""
+
+    bot.send_message(chat_id, final_text, parse_mode="Markdown")
+    
+    if not is_test and quantity > 0:
+        from database.mongo import save_history_record
+        save_history_record(col)
