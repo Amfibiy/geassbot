@@ -62,47 +62,19 @@ except Exception as e:
 register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
 
 def update_counters():
-    """Фоновое обновление счетчиков в активных сборах каждые 30 секунд"""
+    """Фоновый поток для автоматической остановки сборов по таймеру"""
     while True:
         try:
-            current_time = time.time()
-            for chat_id, col in list(active_collections.items()):
-                elapsed_sec = int(current_time - col['start_time'])
-                rem_sec = max(0, COLLECTION_DURATION - elapsed_sec)
-                
-                if rem_sec > 0:
-                    rem_mins = rem_sec // 60
-                    rem_secs = rem_sec % 60
-                    count = len(col['participants'])
+            for coll_dict in [active_collections, test_collection]:
+                for chat_id in list(coll_dict.keys()):
+                    col = coll_dict[chat_id]
+                    elapsed = int(time.time() - col['start_time'])
                     
-                    markup = telebot.types.InlineKeyboardMarkup()
-                    markup.add(telebot.types.InlineKeyboardButton(
-                        "✅ Стать первым" if count == 0 else "✅ Присоединиться", 
-                        callback_data="join_collection"
-                    ))
-                    
-                    text = (
-                        "📊 **Счётчики:**\n"
-                        f"👥 Участников: {count}\n"
-                        f"⏰ Осталось времени: {rem_mins:02d}:{rem_secs:02d}\n\n"
-                        "👇 Нажмите кнопку чтобы присоединиться"
-                    )
-                    
-                    try:
-                        bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=col['counter_message_id'],
-                            text=text,
-                            reply_markup=markup,
-                            parse_mode="Markdown"
-                        )
-                    except telebot.apihelper.ApiTelegramException as e:
-                        if "message is not modified" not in str(e):
-                            print(f"Ошибка обновления сообщения в {chat_id}: {e}")
-                            
+                    if elapsed >= COLLECTION_DURATION:
+                        from handlers.collection_functions import stop_collection_automatically
+                        stop_collection_automatically(chat_id, bot, coll_dict, coll_dict is test_collection)
         except Exception as e:
-            print(f"❌ Критическая ошибка в потоке счетчика: {e}")
-            
+            print(f"❌ Ошибка счетчика: {e}")
         time.sleep(30)
 
 # --- ЗАПУСК ПОТОКОВ ---

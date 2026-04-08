@@ -87,21 +87,28 @@ def do_clean(message, chat_id, clean_type, parameter, bot):
     bot.reply_to(message, f"✅ Очистка завершена. Удалено записей: {deleted}")
 
 def handle_clean_group_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Выбор действия для конкретной группы"""
-    chat_id = call.data.replace("clean_group_", "")
-    markup = types.InlineKeyboardMarkup()
+    user_id = call.from_user.id
+    chat_id = int(call.data.replace("clean_group_", ""))
     
-    actions = [
-        ("Сегодня", "today"), ("Вчера", "yesterday"),
-        ("Неделя", "week"), ("Месяц", "month"),
-        ("Указать дату", "date"), ("Весь период", "all")
-    ]
+    if user_id not in user_sessions:
+        user_sessions[user_id] = {}
+    user_sessions[user_id]['clean_chat_id'] = chat_id
     
-    for text, action in actions:
-        markup.add(types.InlineKeyboardButton(text=text, callback_data=f"clean_action_{chat_id}_{action}"))
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("Сегодня", callback_data="clean_action_today"),
+        types.InlineKeyboardButton("Вчера", callback_data="clean_action_yesterday")
+    )
+    markup.add(
+        types.InlineKeyboardButton("Неделя", callback_data="clean_action_week"),
+        types.InlineKeyboardButton("Месяц", callback_data="clean_action_month")
+    )
+    markup.add(types.InlineKeyboardButton("За всё время", callback_data="clean_action_all"))
+    markup.add(types.InlineKeyboardButton("Ввести вручную", callback_data="clean_action_manual"))
     
-    bot.edit_message_text("Выберите, что именно нужно удалить:", 
-                         call.message.chat.id, call.message.message_id, reply_markup=markup)
+    bot.edit_message_text("🧹 **Выберите период для очистки:**", 
+                          call.message.chat.id, call.message.message_id, 
+                          reply_markup=markup, parse_mode="Markdown")
 
 def handle_clean_action_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
     """Подтверждение удаления (финальный шаг перед очисткой)"""

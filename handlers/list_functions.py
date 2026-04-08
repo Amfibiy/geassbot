@@ -51,16 +51,27 @@ def show_menu_periods_in_ls(message, session, bot):
 
 def handle_list_group_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
     user_id = call.from_user.id
-    chat_id = int(call.data.split('_')[-1])
+    chat_id = int(call.data.replace("list_group_", ""))
     
     if user_id not in user_sessions:
         user_sessions[user_id] = {}
-    
     user_sessions[user_id]['chat_id'] = chat_id
-    user_sessions[user_id]['step'] = "choice_period"
     
-    show_menu_periods_in_ls(call.message, user_sessions[user_id], bot)
-    bot.answer_callback_query(call.id)
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("Сегодня", callback_data="list_period_today"),
+        types.InlineKeyboardButton("Вчера", callback_data="list_period_yesterday")
+    )
+    markup.add(
+        types.InlineKeyboardButton("Неделя", callback_data="list_period_week"),
+        types.InlineKeyboardButton("Месяц", callback_data="list_period_month")
+    )
+    markup.add(types.InlineKeyboardButton("За всё время", callback_data="list_period_all"))
+    markup.add(types.InlineKeyboardButton("Ввести вручную", callback_data="list_period_manual"))
+    
+    bot.edit_message_text("📅 **Выберите период для просмотра статистики:**", 
+                          call.message.chat.id, call.message.message_id, 
+                          reply_markup=markup, parse_mode="Markdown")
 
 def handle_period_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
     parts = call.data.split('_')
