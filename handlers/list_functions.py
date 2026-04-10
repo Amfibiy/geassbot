@@ -83,9 +83,9 @@ def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name,
         lines.append(f"👥 <b>Уникальных участников:</b> {len(unique_users)}\n")
         
         for i, p in enumerate(unique_users.values(), 1):
-            name = p.get('name', 'Без имени').replace('<', '&lt;').replace('>', '&gt;')
-            username = f" (@{p['username']})" if p.get('username') else ""
-            lines.append(f"{i}. {name}{username}")
+            username = f"@{p['username']}" if p.get('username') else "Скрыт"
+            uid = p.get('id', '???')
+            lines.append(f"{i}. {username} (ID: {uid})")
             
         text = "\n".join(lines)
         

@@ -83,7 +83,6 @@ def stop_collection(message, bot, active_collections, test_collection, known_gro
     if not col:
         col = test_collection.pop(chat_id, None)
         is_test = True
-    
     if not col:
         bot.reply_to(message, "❌ Нет активного сбора для остановки.")
         return
@@ -97,7 +96,7 @@ def stop_collection(message, bot, active_collections, test_collection, known_gro
 
     bot.send_message(chat_id, final_text, parse_mode="Markdown")
     
-    if not is_test and quantity > 0:
+    if not is_test and len(col['participants']) > 0:
         save_history_record(col)
 
 def start_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):

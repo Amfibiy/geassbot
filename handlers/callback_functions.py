@@ -1,10 +1,12 @@
 from database.mongo import save_known_group, save_user_id
 
 def handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Тихое сохранение группы и участников при любой активности"""
+    chat_id = message.chat.id
+    if chat_id not in known_groups:
+        known_groups.add(chat_id)
+        save_known_group(chat_id, message.chat.title or f"Группа {chat_id}")
     try:
         chat_id = message.chat.id
-        # Если группы еще нет в списке известных — сохраняем
         if chat_id not in known_groups:
             known_groups.add(chat_id)
             save_known_group(chat_id, message.chat.title or f"Группа {chat_id}")

@@ -34,15 +34,26 @@ def get_group_by_id(chat_id):
         return None
 
 def save_history_record(collection_data):
-    """Сохраняет результаты завершенного сбора"""
+    """Сохраняет результаты, используя только username и ID (без имен)"""
+    # Фильтруем участников, оставляя только ID и Username
+    clean_participants = []
+    for p in collection_data.get('participants', []):
+        clean_participants.append({
+            'id': p.get('id'), # в твоем коде используется ключ 'id'
+            'username': p.get('username')
+        })
+
     record = {
         'chat_id': collection_data['chat_id'],
         'title': collection_data.get('title', 'Сбор'),
         'date': datetime.datetime.now(),
-        'participants': collection_data['participants'],
-        'count': len(collection_data['participants'])
+        'participants': clean_participants,
+        'count': len(clean_participants)
     }
-    history_col.insert_one(record)
+    
+    if record['count'] > 0:
+        history_col.insert_one(record)
+        save_known_group(record['chat_id'], record['title'])
 
 def load_history_for_chat(chat_id, begin_ts=None, end_ts=None):
     """Загружает историю сборов за указанный период"""
@@ -54,18 +65,15 @@ def load_history_for_chat(chat_id, begin_ts=None, end_ts=None):
         }
     return list(history_col.find(query).sort('date', -1))
 
-def delete_history_records(chat_id, period_type):
-    """Удаляет записи истории в зависимости от выбранного периода"""
+def delete_history_records(chat_id, period_type, *args):
+    """*args предотвращает ошибку '3 arguments given'"""
     now = datetime.datetime.now()
-    query = {'chat_id': chat_id}
+    query = {'chat_id': int(chat_id)}
     
     if period_type == 'today':
-        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        query['date'] = {'$gte': start_of_day}
+        query['date'] = {'$gte': now.replace(hour=0, minute=0, second=0)}
     elif period_type == '7days':
-        week_ago = now - datetime.timedelta(days=7)
-        query['date'] = {'$gte': week_ago}
-    # Если 'all', запрос остается только по chat_id
+        query['date'] = {'$gte': now - datetime.timedelta(days=7)}
     
     history_col.delete_many(query)
 
