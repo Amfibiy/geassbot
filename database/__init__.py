@@ -5,7 +5,6 @@ from .mongo import (
     load_history_for_chat,
     save_user_id,
     get_all_members_ids,
-    mark_group_inactive,
     delete_history_records,  # Новая
     clear_all_history        # Новая
 )
