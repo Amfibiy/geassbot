@@ -1,122 +1,99 @@
 import time
 import datetime
 from telebot import types
-from database.mongo import load_history_for_chat, get_group_by_id
+from database.mongo import load_history_for_chat
 from utils.helpers import get_admin_groups
 
 def show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions):
+    """Показывает стартовое меню выбора группы для просмотра статистики"""
     admin_groups = get_admin_groups(message.from_user.id, bot)
+    user_id = message.from_user.id
     
+    if user_id not in user_sessions:
+        user_sessions[user_id] = {}
+
     if not admin_groups:
-        bot.send_message(message.chat.id, "📭 **Список групп пуст.**\nДобавьте бота в группу и выдайте права администратора.", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "📭 <b>Список групп пуст.</b>\nДобавьте бота в группу и выдайте права администратора.", parse_mode="HTML")
         return
 
-    text = "📋 **Ваши доступные группы:**\n\n"
+    text = "📋 <b>Ваши доступные группы:</b>\n\n"
     markup = types.InlineKeyboardMarkup()
     
     for i, g in enumerate(admin_groups, 1):
-        title = g.get('title', 'Группа')
+        title = g.get('title', 'Группа').replace('<', '&lt;').replace('>', '&gt;')
         c_id = g.get('chat_id')
-        text += f"{i}. **{title}** (`{c_id}`)\n"
+        text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
         markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"list_group_{c_id}"))
 
-    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+    text += "\n👇 <b>Нажмите на кнопку выше</b>\nили отправьте ID группы (включая минус) вручную:"
+    
+    user_sessions[user_id]['step'] = 'list_input_id'
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_menu_periods_in_ls(message_or_call, session, bot):
-    chat_id = session.get('chat_id')
-    name_group = session.get('name_group', f"ID: {chat_id}")
+    """Единое меню выбора периода для /list"""
+    chat_id = session.get('list_chat_id')
+    name_group = session.get('name_group', f"Группа {chat_id}").replace('<', '&lt;').replace('>', '&gt;')
     
-    text = f"📊 **Статистика для:** {name_group}\nВыберите период:"
+    text = f"📊 <b>Статистика:</b> {name_group}\nID: <code>{chat_id}</code>\n\n📅 <b>Выберите период:</b>"
+    
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("📅 Сегодня", callback_data="period_today"))
-    markup.add(types.InlineKeyboardButton("🔙 Вчера", callback_data="period_yesterday"))
-    markup.add(types.InlineKeyboardButton("📆 За неделю", callback_data="period_week"))
-    markup.add(types.InlineKeyboardButton("🗓 За месяц", callback_data="period_month"))
-    markup.add(types.InlineKeyboardButton("✍️ Ручной ввод дат", callback_data="period_manual"))
+    markup.row(
+        types.InlineKeyboardButton("Сегодня", callback_data="list_period_today"),
+        types.InlineKeyboardButton("Вчера", callback_data="list_period_yesterday")
+    )
+    markup.row(
+        types.InlineKeyboardButton("Неделя", callback_data="list_period_week"),
+        types.InlineKeyboardButton("Всё время", callback_data="list_period_all")
+    )
+    markup.row(
+        types.InlineKeyboardButton("✍️ Вручную", callback_data="list_period_manual")
+    )
     
-    # Редактируем сообщение, если кликнули по кнопке, или отправляем новое, если ввели ID текстом
-    if hasattr(message_or_call, 'message_id') and not getattr(message_or_call, 'text', '').startswith('-'):
-        bot.edit_message_text(text, message_or_call.chat.id, message_or_call.message_id, reply_markup=markup, parse_mode="Markdown")
+    if hasattr(message_or_call, 'message'): # Если это callback
+        bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
+    else: # Если это сообщение (ручной ввод ID)
+        bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="HTML")
+
+def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name, session, bot):
+    """Вывод итоговой статистики за выбранный период"""
+    all_records = load_history_for_chat(chat_id)
+    
+    # Фильтруем записи
+    if begin_ts and end_ts:
+        filtered = [r for r in all_records if begin_ts <= r['date'].timestamp() <= end_ts]
     else:
-        bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+        filtered = all_records # Для "Всё время"
 
-def handle_list_group_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
-    chat_id = int(call.data.replace('list_group_', ''))
-    user_id = call.from_user.id
-    
-    group = get_group_by_id(chat_id)
-    if not group:
-        bot.answer_callback_query(call.id, "❌ Группа не найдена")
-        return
-
-    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Полностью инициализируем сессию, чтобы кнопки работали
-    user_sessions[user_id] = {
-        'chat_id': chat_id,
-        'name_group': group['title'],
-        'step': 'choice_period'
-    }
-    
-    show_menu_periods_in_ls(call.message, user_sessions[user_id], bot)
-    bot.answer_callback_query(call.id)
-
-def format_participants_list(participants):
-    """Группировка участников по ID, чтобы список был уникальным"""
-    unique_participants = {p['id']: p for p in participants if isinstance(p, dict) and 'id' in p}
-    count = len(unique_participants)
-    if count == 0:
-        return "📭 Записей не найдено.", 0
-    
-    text = f"👥 **Уникальных участников: {count}**\n\n"
-    for p_id, p in unique_participants.items():
-        name = p.get('name', 'Без имени').replace('*', '\\*').replace('_', '\\_')
-        username = f" (@{p['username']})" if p.get('username') else ""
-        text += f"• {name}{username}\n"
-    return text, count
-
-def show_result_by_date(message, chat_id, participants, date_start, date_end, session, bot):
-    text_list, count = format_participants_list(participants)
-    header = f"📊 **Отчет:** {session.get('name_group', '')}\n📅 Период: {date_start} - {date_end}\n\n"
-    bot.send_message(message.chat.id, header + text_list, parse_mode="Markdown")
-
-def handle_period_callback(call, bot, active_collections, test_collection, known_groups, user_sessions):
-    user_id = call.from_user.id
-    if user_id not in user_sessions or 'chat_id' not in user_sessions[user_id]:
-        bot.answer_callback_query(call.id, "❌ Сессия истекла. Введите /list снова.", show_alert=True)
-        return
-
-    period = call.data.replace('period_', '')
-    chat_id = user_sessions[user_id]['chat_id']
-    
-    if period == "manual":
-        user_sessions[user_id]['step'] = "input_date_range"
-        bot.send_message(call.message.chat.id, "✍️ Введите диапазон дат в формате `ДД-ММ-ГГГГ - ДД-ММ-ГГГГ`\nНапример: `01-01-2024 - 05-01-2024`", parse_mode="Markdown")
-        bot.answer_callback_query(call.id)
-        return
-
-    now_ts = time.time()
-    now_dt = datetime.datetime.fromtimestamp(now_ts)
-    
-    if period == "today":
-        begin = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        end = now_ts
-        d_str = "Сегодня"
-    elif period == "yesterday":
-        begin = (now_dt - datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        end = begin + 86399
-        d_str = "Вчера"
-    elif period == "week":
-        begin = now_ts - 604800
-        end = now_ts
-        d_str = "Последние 7 дней"
-    elif period == "month":
-        begin = now_ts - 2592000
-        end = now_ts
-        d_str = "Последние 30 дней"
-
-    records = load_history_for_chat(chat_id, begin, end)
-    all_p = []
-    for r in records:
-        all_p.extend(r.get('participants', []))
+    if not filtered:
+        text = f"📭 За период <b>{period_name}</b> записей не найдено."
+    else:
+        # Собираем уникальных участников
+        unique_users = {}
+        for r in filtered:
+            for p in r.get('participants', []):
+                uid = p['id']
+                if uid not in unique_users:
+                    unique_users[uid] = p
         
-    show_result_by_date(call.message, chat_id, all_p, d_str, d_str, user_sessions[user_id], bot)
-    bot.answer_callback_query(call.id)
+        name_group = session.get('name_group', f"Группа {chat_id}").replace('<', '&lt;').replace('>', '&gt;')
+        lines = [f"📊 <b>Статистика:</b> {name_group}"]
+        lines.append(f"📅 <b>Период:</b> {period_name}")
+        lines.append(f"🔄 <b>Проведено сборов:</b> {len(filtered)}")
+        lines.append(f"👥 <b>Уникальных участников:</b> {len(unique_users)}\n")
+        
+        for i, p in enumerate(unique_users.values(), 1):
+            name = p.get('name', 'Без имени').replace('<', '&lt;').replace('>', '&gt;')
+            username = f" (@{p['username']})" if p.get('username') else ""
+            lines.append(f"{i}. {name}{username}")
+            
+        text = "\n".join(lines)
+        
+        # Обрезка для лимитов Telegram
+        if len(text) > 4000:
+            text = text[:4000] + "\n\n... <i>Список обрезан из-за лимита символов</i>"
+
+    if hasattr(message_or_call, 'message'):
+        bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, parse_mode="HTML")
+    else:
+        bot.send_message(message_or_call.chat.id, text, parse_mode="HTML")

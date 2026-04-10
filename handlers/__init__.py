@@ -8,7 +8,5 @@ def register_all_handlers(bot, active_collections, test_collection, known_groups
     register_collection_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
     register_list_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
     register_clean_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
-    
     register_commands(bot, active_collections, test_collection, known_groups, user_sessions)
-    
     register_callbacks(bot, active_collections, test_collection, known_groups, user_sessions)
