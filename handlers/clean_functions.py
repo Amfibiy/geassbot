@@ -5,7 +5,6 @@ from database.mongo import delete_history_records
 from utils.helpers import get_admin_groups
 
 def handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Стартовое меню очистки"""
     admin_groups = get_admin_groups(message.from_user.id, bot)
     user_id = message.from_user.id
     
@@ -31,7 +30,6 @@ def handle_clean(message, bot, active_collections, test_collection, known_groups
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_clean_actions(message_or_call, session, bot):
-    """Единое меню выбора периода для /clean"""
     chat_id = session.get('clean_chat_id')
     name_group = session.get('name_group', f"Группа {chat_id}").replace('<', '&lt;').replace('>', '&gt;')
     
@@ -56,7 +54,6 @@ def show_clean_actions(message_or_call, session, bot):
         bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def ask_confirm_clean(message_or_call, chat_id, begin_ts, end_ts, period_name, session, bot):
-    """Подтверждение перед необратимым удалением"""
     session['clean_begin'] = begin_ts
     session['clean_end'] = end_ts
     session['clean_period_name'] = period_name
@@ -74,7 +71,6 @@ def ask_confirm_clean(message_or_call, chat_id, begin_ts, end_ts, period_name, s
         bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def execute_delete(call, bot, user_sessions):
-    """Финальное удаление из БД"""
     user_id = call.from_user.id
     session = user_sessions.get(user_id, {})
     
@@ -88,7 +84,6 @@ def execute_delete(call, bot, user_sessions):
         return
 
     try:
-        # Вызов функции из mongo.py
         delete_history_records(chat_id, begin_ts, end_ts) 
         bot.edit_message_text(f"✅ <b>Очистка завершена!</b>\n\nЗаписи за <b>{period_name}</b> для группы <code>{chat_id}</code> успешно удалены.", call.message.chat.id, call.message.message_id, parse_mode="HTML")
     except Exception as e:

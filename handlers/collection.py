@@ -32,7 +32,6 @@ def register_collection_handlers(bot, active_collections, test_collection, known
             return
         stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions)
 
-    # Обработчик нажатия на кнопку "Присоединиться"
     @bot.callback_query_handler(func=lambda call: call.data == 'join_collection')
     def join_collection_callback(call):
         handle_join(call, bot, active_collections, test_collection, known_groups, user_sessions)

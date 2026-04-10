@@ -1,21 +1,19 @@
 from database.mongo import load_history_for_chat, save_user_id
 from utils.validators import validate_date
+from .list_functions import show_result_by_date, show_menu_periods_in_ls
 
 def handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Тихое сохранение участников групп"""
     try:
         if not message.from_user.is_bot:
             save_user_id(
                 chat_id=message.chat.id,
                 user_id=message.from_user.id,
                 username=message.from_user.username,
-                first_name=message.from_user.first_name
             )
     except Exception as e:
         print(f"❌ Ошибка логирования: {e}")
 
 def handle_private_text(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Обработка ручного ввода диапазона дат в ЛС"""
     user_id = message.from_user.id
     session = user_sessions.get(user_id)
     
@@ -31,7 +29,6 @@ def handle_private_text(message, bot, active_collections, test_collection, known
                 
                 if d1 and d2:
                     begin = d1.timestamp()
-                    # Делаем конец дня для второй даты (23:59:59)
                     end = d2.replace(hour=23, minute=59, second=59).timestamp()
                     
                     records = load_history_for_chat(chat_id, begin, end)
@@ -39,10 +36,8 @@ def handle_private_text(message, bot, active_collections, test_collection, known
                     for r in records:
                         all_p.extend(r.get('participants', []))
                     
-                    from .list_functions import show_result_by_date, show_menu_periods_in_ls
                     show_result_by_date(message, chat_id, all_p, parts[0], parts[1], session, bot)
                     
-                    # Сбрасываем шаг и возвращаем меню
                     session['step'] = "choice_period"
                     show_menu_periods_in_ls(message, session, bot)
                 else:
@@ -53,14 +48,11 @@ def handle_private_text(message, bot, active_collections, test_collection, known
             bot.reply_to(message, "✍️ Используйте формат: ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
 
 def register_callbacks(bot, active_collections, test_collection, known_groups, user_sessions):
-    """Главная функция для регистрации всех обработчиков сообщений"""
 
-    # Слушаем все текстовые сообщения в группах
     @bot.message_handler(func=lambda m: m.chat.type in ['group', 'supergroup'])
     def group_msg(message):
         handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions)
 
-    # Слушаем ручной ввод текста в ЛС (исключая команды и ID)
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and not (m.text.startswith('/') or m.text.startswith('-') or m.text.isdigit()))
     def private_msg(message):
         handle_private_text(message, bot, active_collections, test_collection, known_groups, user_sessions)

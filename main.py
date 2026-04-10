@@ -8,15 +8,12 @@ import sys
 import os
 from flask import Flask
 from config.commands_setup import setup_bot_menu
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# 1. ИСПРАВЛЕНИЕ ПУТЕЙ (Самое важное для Render)
-# Находим путь к директории, где лежит этот файл (src или корень)
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# Вставляем путь в самое начало, чтобы модули 'handlers' и 'database' точно нашлись
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
-# Теперь импорты пойдут без ошибок
 try:
     from config.settings import BOT_TOKEN, COLLECTION_DURATION
     from database.mongo import get_known_groups
@@ -24,11 +21,9 @@ try:
     
 except ImportError as e:
     print(f"❌ Ошибка импорта: {e}")
-    # Выводим текущие пути, чтобы понять, где Python ищет файлы в логах Render
     print(f"Текущий sys.path: {sys.path}")
     sys.exit(1)
 
-# --- СЕКЦИЯ FLASK (Для Render Web Service) ---
 app = Flask(__name__)
 
 @app.route('/')
@@ -36,12 +31,9 @@ def index():
     return "Bot is running perfectly!"
 
 def run_flask():
-    # 2. ИСПРАВЛЕНИЕ ПОРТА
-    # Render сам передает нужный порт через переменную PORT
     port = int(os.environ.get("PORT", 10000)) 
     app.run(host='0.0.0.0', port=port)
 
-# --- ИНИЦИАЛИЗАЦИЯ БОТА ---
 print("🚀 Запуск бота через Web Service (Flask + Polling)...")
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -51,18 +43,15 @@ test_collection = {}
 user_sessions = {}
 setup_bot_menu(bot)
 
-# Пытаемся получить группы из базы (с обработкой ошибки подключения)
 try:
     known_groups = {g['chat_id'] for g in get_known_groups()}
 except Exception as e:
     print(f"⚠️ Предупреждение: Не удалось загрузить группы из БД: {e}")
     known_groups = set()
 
-# Регистрируем хендлеры
 register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
 
 def update_counters():
-    """Фоновый поток для обновления счетчиков и авто-стопа"""
     while True:
         try:
             for coll_dict in [active_collections, test_collection]:
@@ -75,11 +64,9 @@ def update_counters():
                         from handlers.collection_functions import stop_collection_automatically
                         stop_collection_automatically(chat_id, bot, coll_dict, coll_dict is test_collection)
                     else:
-                        # ОБНОВЛЕНИЕ ТЕКСТА СЧЕТЧИКА (Новый стиль)
                         minutes_left = rem // 60
                         seconds_left = rem % 60
                         
-                        # Формируем список имен
                         if col['participants']:
                             members_text = "\n".join([f"{i+1}. {p['name']}" for i, p in enumerate(col['participants'])])
                         else:
@@ -92,8 +79,6 @@ def update_counters():
 
 👇 Нажмите кнопку чтобы присоединиться"""
                         
-                        # Обновляем кнопку с текущим кол-вом
-                        from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
                         markup = InlineKeyboardMarkup()
                         markup.add(InlineKeyboardButton(f"✅ Присоединиться ({len(col['participants'])})", callback_data="join_collection"))
 
@@ -114,17 +99,13 @@ def update_counters():
             print(f"❌ Ошибка в цикле счетчика: {e}")
         time.sleep(30)
 
-# --- ЗАПУСК ПОТОКОВ ---
 if __name__ == "__main__":
-    # 1. Запускаем Flask для Render
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # 2. Очищаем вебхук
     bot.remove_webhook()
     
-    # 3. Запускаем фоновый счетчик
     counter_thread = threading.Thread(target=update_counters)
     counter_thread.daemon = True
     counter_thread.start()

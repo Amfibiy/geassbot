@@ -17,18 +17,15 @@ def register_commands(bot, active_collections, test_collection, known_groups, us
 
     @bot.message_handler(commands=['add'])
     def handle_add_start(message):
-        # Ограничиваем только ЛС
         if message.chat.type != 'private':
             bot.reply_to(message, "❌ Команда /add теперь работает только в личных сообщениях с ботом.")
             return
         
-        # Получаем список групп, где пользователь является админом
         admin_groups = get_admin_groups(message.from_user.id, bot)
         if not admin_groups:
             bot.reply_to(message, "📭 У вас нет доступных групп, где вы являетесь администратором.")
             return
 
-        # Генерируем клавиатуру с выбором группы
         markup = types.InlineKeyboardMarkup()
         for g in admin_groups:
             markup.add(types.InlineKeyboardButton(text=g.get('title', f"Группа {g['chat_id']}"), callback_data=f"add_group_{g['chat_id']}"))
@@ -39,19 +36,15 @@ def register_commands(bot, active_collections, test_collection, known_groups, us
             reply_markup=markup, 
             parse_mode="Markdown"
         )
-
-    # Обработчик нажатия на кнопку выбора группы для /add
     @bot.callback_query_handler(func=lambda call: call.data.startswith('add_group_'))
     def add_group_selection(call):
         chat_id = int(call.data.replace('add_group_', ''))
         user_id = call.from_user.id
         
-        # Сохраняем выбранную группу в сессию
         if user_id not in user_sessions:
             user_sessions[user_id] = {}
         user_sessions[user_id]['add_chat_id'] = chat_id
         
-        # Запрашиваем ник
         msg = bot.edit_message_text(
             "🆔 **Отправьте ник вида @username:**\n*(или напишите /cancel для отмены)*",
             call.message.chat.id,
@@ -63,15 +56,13 @@ def register_commands(bot, active_collections, test_collection, known_groups, us
     def process_add_step(message, bot, user_sessions):
         user_id = message.from_user.id
         text = message.text.strip()
-        
-        # Обработка отмены
+
         if text.lower() == '/cancel':
             bot.send_message(message.chat.id, "🛑 Добавление отменено.")
             if user_id in user_sessions and 'add_chat_id' in user_sessions[user_id]:
                 del user_sessions[user_id]['add_chat_id']
             return
 
-        # Валидация ника
         if not text.startswith('@'):
             msg = bot.reply_to(message, "❌ Ник должен начинаться с @. Попробуйте еще раз или введите /cancel")
             bot.register_next_step_handler(msg, process_add_step, bot, user_sessions)
@@ -90,7 +81,6 @@ def register_commands(bot, active_collections, test_collection, known_groups, us
             bot.reply_to(message, f"✅ Пользователь {username} успешно добавлен в базу выбранной группы!")
         else:
             bot.reply_to(message, f"❌ Ошибка базы данных при добавлении {username}.")
-        
-        # Чистим сессию
+
         if 'add_chat_id' in user_sessions[user_id]:
             del user_sessions[user_id]['add_chat_id']

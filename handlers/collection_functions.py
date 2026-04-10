@@ -8,7 +8,6 @@ from utils.messages import START_MESSAGES, TEST_START_MSG, COLLECT_ALREADY_RUNNI
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
     
-    # Если сбор уже запущен
     if chat_id in collection_dict:
         col = collection_dict[chat_id]
         elapsed = int(time.time() - col['start_time'])
@@ -31,12 +30,10 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
         bot.reply_to(message, status_text, parse_mode="Markdown")
         return
 
-    # Подготовка тегов (mention_text)
     member_ids = get_all_members_ids(chat_id)
     tags = [f'<a href="tg://user?id={m_id}">\u200b</a>' for m_id in member_ids]
     mention_text = "".join(tags)
 
-    # Тексты сообщений
     if is_test:
         msgs = [
             f"{mention_text}🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут\n👇 Нажмите для теста"
@@ -49,12 +46,10 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
             f"{mention_text}💥 *Последний звонок!* 💥\n\n✅ Успейте присоединиться!\n🎁 Возможность для всех!"
         ]
 
-    # Отправка цепочки сообщений
     for m_text in msgs:
         bot.send_message(chat_id, m_text, parse_mode="HTML")
         time.sleep(0.5)
 
-    # Основное сообщение со счётчиком
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
     
@@ -66,7 +61,6 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
 
     main_msg = bot.send_message(chat_id, main_text, reply_markup=markup, parse_mode="Markdown")
     
-    # Регистрация сбора в памяти
     collection_dict[chat_id] = {
         'start_time': time.time(),
         'main_message_id': main_msg.message_id,
@@ -76,7 +70,6 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
     }
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Ручная остановка"""
     chat_id = message.chat.id
     is_test = False
     col = active_collections.pop(chat_id, None)
@@ -124,11 +117,9 @@ def handle_join(call, bot, active_collections, test_collection, known_groups, us
         bot.answer_callback_query(call.id, "✅ Вы уже в списке!")
         return
 
-    # Добавляем юзера
-    col['participants'].append({'id': user.id, 'name': user.first_name, 'username': user.username})
+    col['participants'].append({'id': user.id, 'username': user.username})
     count = len(col['participants'])
     
-    # Обновляем кнопку
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(f"✅ Присоединиться ({count})", callback_data="join_collection"))
     
@@ -149,7 +140,6 @@ def stop_collection_automatically(chat_id, bot, coll_dict, is_test):
 
     quantity = len(col['participants'])
     
-    # Твой новый текст для завершения
     final_text = f"""✅ *Сбор завершён!*
         
 👥 Участников: {quantity}

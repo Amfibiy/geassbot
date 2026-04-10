@@ -5,7 +5,6 @@ from database.mongo import load_history_for_chat
 from utils.helpers import get_admin_groups
 
 def show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    """Показывает стартовое меню выбора группы для просмотра статистики"""
     admin_groups = get_admin_groups(message.from_user.id, bot)
     user_id = message.from_user.id
     
@@ -25,50 +24,42 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
         text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
         markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"list_group_{c_id}"))
 
-    text += "\n👇 <b>Нажмите на кнопку выше</b>\nили отправьте ID группы (включая минус) вручную:"
-    
-    user_sessions[user_id]['step'] = 'list_input_id'
+    text += "\n👇 <b>Нажмите на кнопку выше</b>\nили отправьте ID группы."
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_menu_periods_in_ls(message_or_call, session, bot):
-    """Единое меню выбора периода для /list"""
     chat_id = session.get('list_chat_id')
     name_group = session.get('name_group', f"Группа {chat_id}").replace('<', '&lt;').replace('>', '&gt;')
     
-    text = f"📊 <b>Статистика:</b> {name_group}\nID: <code>{chat_id}</code>\n\n📅 <b>Выберите период:</b>"
-    
+    text = f"📊 <b>Группа:</b> {name_group}\nВыберите период для статистики:"
     markup = types.InlineKeyboardMarkup()
-    markup.row(
-        types.InlineKeyboardButton("Сегодня", callback_data="list_period_today"),
-        types.InlineKeyboardButton("Вчера", callback_data="list_period_yesterday")
+    markup.add(
+        types.InlineKeyboardButton("📅 Сегодня", callback_data="list_period_today"),
+        types.InlineKeyboardButton("📅 Неделя", callback_data="list_period_week")
     )
-    markup.row(
-        types.InlineKeyboardButton("Неделя", callback_data="list_period_week"),
-        types.InlineKeyboardButton("Всё время", callback_data="list_period_all")
-    )
-    markup.row(
-        types.InlineKeyboardButton("✍️ Вручную", callback_data="list_period_manual")
+    markup.add(
+        types.InlineKeyboardButton("🗓 Произвольные даты", callback_data="list_period_custom"),
+        types.InlineKeyboardButton("🗄 Всё время", callback_data="list_period_all")
     )
     
-    if hasattr(message_or_call, 'message'): # Если это callback
-        bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
-    else: # Если это сообщение (ручной ввод ID)
-        bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="HTML")
+    chat_to_send = message_or_call.message.chat.id if hasattr(message_or_call, 'message') else message_or_call.chat.id
+    
+    if hasattr(message_or_call, 'message'):
+        bot.edit_message_text(text, chat_to_send, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
+    else:
+        bot.send_message(chat_to_send, text, reply_markup=markup, parse_mode="HTML")
 
 def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name, session, bot):
-    """Вывод итоговой статистики за выбранный период"""
-    all_records = load_history_for_chat(chat_id)
+    all_records = load_history_for_chat(chat_id, begin_ts, end_ts)
     
-    # Фильтруем записи
     if begin_ts and end_ts:
         filtered = [r for r in all_records if begin_ts <= r['date'].timestamp() <= end_ts]
     else:
-        filtered = all_records # Для "Всё время"
+        filtered = all_records
 
     if not filtered:
         text = f"📭 За период <b>{period_name}</b> записей не найдено."
     else:
-        # Собираем уникальных участников
         unique_users = {}
         for r in filtered:
             for p in r.get('participants', []):
@@ -84,16 +75,20 @@ def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name,
         
         for i, p in enumerate(unique_users.values(), 1):
             username = f"@{p['username']}" if p.get('username') else "Скрыт"
-            uid = p.get('id', '???')
+            uid = p.get('id', 'Неизвестно')
             lines.append(f"{i}. {username} (ID: {uid})")
             
         text = "\n".join(lines)
         
-        # Обрезка для лимитов Telegram
         if len(text) > 4000:
-            text = text[:4000] + "\n\n... <i>Список обрезан из-за лимита символов</i>"
+            text = text[:3900] + "\n... (список обрезан из-за лимитов)"
 
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔙 Назад к периодам", callback_data="list_back_to_periods"))
+    
+    chat_to_send = message_or_call.message.chat.id if hasattr(message_or_call, 'message') else message_or_call.chat.id
+    
     if hasattr(message_or_call, 'message'):
-        bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, parse_mode="HTML")
+        bot.edit_message_text(text, chat_to_send, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
     else:
-        bot.send_message(message_or_call.chat.id, text, parse_mode="HTML")
+        bot.send_message(chat_to_send, text, reply_markup=markup, parse_mode="HTML")

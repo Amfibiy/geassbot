@@ -13,7 +13,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         else:
             bot.reply_to(message, "⚠️ Очистка доступна только в ЛС.")
 
-    # 1. Колбэк выбора группы
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_group_'))
     def clean_group_cb(call):
         user_id = call.from_user.id
@@ -28,7 +27,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         show_clean_actions(call, user_sessions[user_id], bot)
         bot.answer_callback_query(call.id)
 
-    # 2. Ручной ввод ID группы
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'clean_input_id')
     def handle_clean_manual_id(message):
         chat_id = message.text.strip()
@@ -40,7 +38,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         else:
             bot.send_message(message.chat.id, "❌ Группа с таким ID не найдена в базе.")
 
-    # 3. Колбэк выбора периода
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_period_'))
     def clean_period_cb(call):
         user_id = call.from_user.id
@@ -81,7 +78,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         ask_confirm_clean(call, chat_id, begin, end, p_name, session, bot)
         bot.answer_callback_query(call.id)
 
-    # 4. Ручной ввод дат
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'clean_input_date')
     def handle_clean_manual_date(message):
         u_id = message.from_user.id
@@ -105,7 +101,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         else:
             bot.reply_to(message, "✍️ Используйте разделитель ' - '.")
 
-    # 5. Подтверждение удаления
     @bot.callback_query_handler(func=lambda call: call.data in ["clean_confirm_yes", "clean_confirm_no"])
     def do_clean_final_cb(call):
         if call.data == "clean_confirm_yes":

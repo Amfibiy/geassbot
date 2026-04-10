@@ -9,7 +9,6 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
     @bot.message_handler(commands=['list'])
     def handle_list(message):
         if message.chat.type in ['group', 'supergroup']:
-            # Логика текущего сбора для группы
             chat_id = message.chat.id
             col = active_collections.get(chat_id) or test_collection.get(chat_id)
             if col:
@@ -27,10 +26,8 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
             else:
                 bot.reply_to(message, "ℹ️ В данный момент нет активных сборов.")
         else:
-            # Для ЛС
             show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions)
 
-    # 1. Колбэк выбора группы
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_group_'))
     def list_group_cb(call):
         user_id = call.from_user.id
@@ -45,7 +42,6 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         show_menu_periods_in_ls(call, user_sessions[user_id], bot)
         bot.answer_callback_query(call.id)
 
-    # 2. Ручной ввод ID группы
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_id')
     def handle_list_manual_id(message):
         chat_id = message.text.strip()
@@ -57,7 +53,6 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         else:
             bot.send_message(message.chat.id, "❌ Группа с таким ID не найдена в базе.")
 
-    # 3. Колбэк выбора периода
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_period_'))
     def list_period_cb(call):
         user_id = call.from_user.id
@@ -98,7 +93,6 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         show_result_by_date(call, chat_id, begin, end, p_name, session, bot)
         bot.answer_callback_query(call.id)
 
-    # 4. Ручной ввод дат
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
     def handle_list_manual_date(message):
         u_id = message.from_user.id
