@@ -31,13 +31,22 @@ def get_group_by_id(chat_id):
 
 def save_history_record(collection_data):
     chat_id = int(collection_data['chat_id'])
-    save_known_group(chat_id, collection_data.get('title', f"Группа {chat_id}"))
     
+    save_known_group(chat_id, collection_data.get('title', f"Группа {chat_id}"))
+
+    clean_participants = []
+    for p in collection_data.get('participants', []):
+        clean_participants.append({
+            'id': p.get('id'),
+            'username': p.get('username'),
+            'name': p.get('name', 'Участник')
+        })
+        
     record = {
         'chat_id': chat_id,
         'title': collection_data.get('title'),
         'date': datetime.datetime.now(),
-        'participants': collection_data.get('participants', []),
+        'participants': clean_participants,
         'is_test': collection_data.get('is_test', False)
     }
     history_col.insert_one(record)
@@ -73,12 +82,11 @@ def save_user_id(chat_id, user_id, username, first_name=None):
     existing_user = members_col.find_one({'chat_id': c_id, 'user_id': u_id})
     
     if clean_username:
-        # Если ранее добавляли через /add без ID, привязываем ID сейчас
         members_col.update_one(
             {'chat_id': c_id, 'username': clean_username, 'user_id': None},
             {'$set': {'user_id': u_id, 'last_seen': datetime.datetime.now()}}
         )
-            
+
     members_col.update_one(
         {'chat_id': c_id, 'user_id': u_id},
         {'$set': {
@@ -87,7 +95,7 @@ def save_user_id(chat_id, user_id, username, first_name=None):
         }},
         upsert=True
     )
-    
+
     return existing_user is None
 
 def add_user_by_username(chat_id, username):
@@ -97,7 +105,7 @@ def add_user_by_username(chat_id, username):
     existing = members_col.find_one({'chat_id': c_id, 'username': clean_username})
     if existing:
         return False
-
+        
     members_col.insert_one({
         'chat_id': c_id,
         'user_id': None,
@@ -107,5 +115,5 @@ def add_user_by_username(chat_id, username):
     return True
 
 def get_all_members_ids(chat_id):
-    cursor = members_col.find({'chat_id': int(chat_id), 'user_id': {'$ne': None}})
-    return [doc['user_id'] for doc in cursor]
+    members = members_col.find({'chat_id': int(chat_id)})
+    return [m['user_id'] for m in members if m.get('user_id') is not None]
