@@ -4,6 +4,11 @@ from telebot import types
 from database.mongo import load_history_for_chat
 from utils.helpers import get_admin_groups
 
+def escape_html(text):
+    if not text: 
+        return ""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 def show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions):
     admin_groups = get_admin_groups(message.from_user.id, bot)
     user_id = message.from_user.id
@@ -19,7 +24,7 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
     markup = types.InlineKeyboardMarkup()
     
     for i, g in enumerate(admin_groups, 1):
-        title = g.get('title', 'Группа').replace('<', '&lt;').replace('>', '&gt;')
+        title = escape_html(g.get('title', 'Группа'))
         c_id = g.get('chat_id')
         text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
         markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"list_group_{c_id}"))
@@ -33,7 +38,7 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
 
 def show_menu_periods_in_ls(message_or_call, session, bot):
     chat_id = session.get('list_chat_id')
-    name_group = session.get('name_group', f"Группа {chat_id}").replace('<', '&lt;').replace('>', '&gt;')
+    name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
 
     text = f"📅 <b>Выберите период для группы:</b>\n{name_group}\n(ID: <code>{chat_id}</code>)"
     
@@ -71,14 +76,14 @@ def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name,
                 if uid not in unique_users:
                     unique_users[uid] = p
         
-        name_group = session.get('name_group', f"Группа {chat_id}").replace('<', '&lt;').replace('>', '&gt;')
+        name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
         lines = [f"📊 <b>Статистика:</b> {name_group}"]
         lines.append(f"📅 <b>Период:</b> {period_name}")
         lines.append(f"🔄 <b>Проведено сборов:</b> {len(filtered)}")
         lines.append(f"👥 <b>Уникальных участников:</b> {len(unique_users)}\n")
         
         for i, p in enumerate(unique_users.values(), 1):
-            username = f"@{p['username']}".replace('_', '\_') if p.get('username') else "Скрыт"
+            username = f"@{escape_html(p.get('username'))}" if p.get('username') else "Скрыт"
             uid = p.get('id', 'Неизвестно')
             lines.append(f"{i}. {username} (ID: <code>{uid}</code>)")
             

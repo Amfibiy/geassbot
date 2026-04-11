@@ -8,8 +8,7 @@ def is_admin(chat_id, user_id, bot):
     try:
         member = bot.get_chat_member(chat_id, user_id)
         return member.status in ['creator', 'administrator']
-    except Exception as e:
-        logging.info(f"Ошибка проверки админа в {chat_id}: {e}")
+    except Exception:
         return False
 
 def is_bot_admin(chat_id, bot):
@@ -17,8 +16,7 @@ def is_bot_admin(chat_id, bot):
         me = bot.get_me()
         member = bot.get_chat_member(chat_id, me.id)
         return member.status == 'administrator'
-    except Exception as e:
-        logging.info(f"Ошибка проверки прав бота в {chat_id}: {e}")
+    except Exception:
         return False
 
 def get_admin_groups(user_id, bot):

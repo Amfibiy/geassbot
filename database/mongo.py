@@ -5,10 +5,14 @@ from config.settings import MONGO_URI
 client = pymongo.MongoClient(MONGO_URI)
 db = client['telegram_bot_db']
 history_col = db['collection_history']
+groups_col = db['registered_groups']
 members_col = db['chat_members']
-groups_col = db['registered_groups']  # Новая коллекция для учета групп
 
 def save_known_group(chat_id, title):
+    existing = groups_col.find_one({'chat_id': int(chat_id)})
+    if not existing:
+        print(f"🆕 [DB] Зарегистрирована новая группа: {title} ({chat_id})", flush=True)
+
     groups_col.update_one(
         {'chat_id': int(chat_id)},
         {'$set': {'title': title, 'last_activity': datetime.datetime.now()}},
