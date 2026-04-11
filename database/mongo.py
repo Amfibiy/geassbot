@@ -6,24 +6,21 @@ client = pymongo.MongoClient(MONGO_URI)
 db = client['telegram_bot_db']
 history_col = db['collection_history']
 members_col = db['chat_members']
+groups_col = db['registered_groups']  # Новая коллекция для учета групп
 
 def save_known_group(chat_id, title):
-    history_col.update_one(
+    groups_col.update_one(
         {'chat_id': int(chat_id)},
         {'$set': {'title': title, 'last_activity': datetime.datetime.now()}},
         upsert=True
     )
 
 def get_known_groups():
-    pipeline = [
-        {"$group": {"_id": "$chat_id", "title": {"$first": "$title"}}},
-        {"$project": {"chat_id": "$_id", "title": 1, "_id": 0}}
-    ]
-    return list(history_col.aggregate(pipeline))
+    return list(groups_col.find({}, {'_id': 0, 'chat_id': 1, 'title': 1}))
 
 def get_group_by_id(chat_id):
     try:
-        return history_col.find_one({'chat_id': int(chat_id)})
+        return groups_col.find_one({'chat_id': int(chat_id)})
     except (ValueError, TypeError):
         return None
 
@@ -43,9 +40,9 @@ def save_history_record(collection_data):
         'count': len(clean_participants)
     }
     
-    if record['count'] > 0:
-        history_col.insert_one(record)
-        save_known_group(record['chat_id'], record['title'])
+    history_col.insert_one(record)
+    save_known_group(record['chat_id'], record['title'])
+    print(f"💾 [DB] Сохранен сбор: {record['title']} ({record['count']} чел.)", flush=True)
 
 def load_history_for_chat(chat_id, begin_ts=None, end_ts=None):
     query = {'chat_id': int(chat_id)}
@@ -84,11 +81,11 @@ def add_user_by_username(chat_id, username):
     username = username.replace('@', '')
     result = members_col.update_one(
         {'chat_id': int(chat_id), 'username': username},
-        {'$set': {'last_seen': datetime.datetime.now()}},
+        {'$setOnInsert': {'user_id': None, 'last_seen': datetime.datetime.now()}},
         upsert=True
     )
-    return result.modified_count > 0 or result.upserted_id is not None
+    return result.upserted_id is not None or result.modified_count > 0
 
 def get_all_members_ids(chat_id):
-    members = members_col.find({'chat_id': int(chat_id)}, {'user_id': 1})
-    return [m['user_id'] for m in members if 'user_id' in m]
+    docs = members_col.find({'chat_id': int(chat_id)}, {'user_id': 1})
+    return [d['user_id'] for d in docs if d.get('user_id')]

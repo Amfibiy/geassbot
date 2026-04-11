@@ -12,7 +12,7 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
         user_sessions[user_id] = {}
 
     if not admin_groups:
-        bot.send_message(message.chat.id, "📭 <b>Список групп пуст.</b>\nДобавьте бота в группу и выдайте права администратора.", parse_mode="HTML")
+        bot.send_message(message.chat.id, "📭 <b>Список групп пуст.</b>\nНапишите любое сообщение в вашей группе с ботом, чтобы она зарегистрировалась.", parse_mode="HTML")
         return
 
     text = "📋 <b>Ваши доступные группы:</b>\n\n"
@@ -24,41 +24,45 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
         text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
         markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"list_group_{c_id}"))
 
-    text += "\n👇 <b>Нажмите на кнопку выше</b>\nили отправьте ID группы."
-    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+    text += "\n👇 <b>Нажмите на кнопку выше</b>"
+    
+    if hasattr(message, 'message_id'):
+        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+    else:
+        bot.edit_message_text(text, message.message.chat.id, message.message.message_id, reply_markup=markup, parse_mode="HTML")
 
 def show_menu_periods_in_ls(message_or_call, session, bot):
     chat_id = session.get('list_chat_id')
     name_group = session.get('name_group', f"Группа {chat_id}").replace('<', '&lt;').replace('>', '&gt;')
+
+    text = f"📅 <b>Выберите период для группы:</b>\n{name_group}\n(ID: <code>{chat_id}</code>)"
     
-    text = f"📊 <b>Группа:</b> {name_group}\nВыберите период для статистики:"
     markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton("📅 Сегодня", callback_data="list_period_today"),
-        types.InlineKeyboardButton("📅 Неделя", callback_data="list_period_week")
-    )
-    markup.add(
-        types.InlineKeyboardButton("🗓 Произвольные даты", callback_data="list_period_custom"),
-        types.InlineKeyboardButton("🗄 Всё время", callback_data="list_period_all")
-    )
-    
-    chat_to_send = message_or_call.message.chat.id if hasattr(message_or_call, 'message') else message_or_call.chat.id
-    
+    markup.add(types.InlineKeyboardButton("Сегодня", callback_data="list_period_today"))
+    markup.add(types.InlineKeyboardButton("Вчера", callback_data="list_period_yesterday"))
+    markup.add(types.InlineKeyboardButton("За 7 дней", callback_data="list_period_week"))
+    markup.add(types.InlineKeyboardButton("За всё время", callback_data="list_period_all"))
+    markup.add(types.InlineKeyboardButton("Ввести даты вручную", callback_data="list_period_manual"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад к списку", callback_data="list_back_to_groups"))
+
     if hasattr(message_or_call, 'message'):
-        bot.edit_message_text(text, chat_to_send, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
+        bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
     else:
-        bot.send_message(chat_to_send, text, reply_markup=markup, parse_mode="HTML")
+        bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name, session, bot):
-    all_records = load_history_for_chat(chat_id, begin_ts, end_ts)
+    records = load_history_for_chat(chat_id, begin_ts, end_ts)
     
-    if begin_ts and end_ts:
-        filtered = [r for r in all_records if begin_ts <= r['date'].timestamp() <= end_ts]
-    else:
-        filtered = all_records
+    filtered = []
+    for r in records:
+        if begin_ts and end_ts:
+            if begin_ts <= r['date'].timestamp() <= end_ts:
+                filtered.append(r)
+        else:
+            filtered.append(r)
 
     if not filtered:
-        text = f"📭 За период <b>{period_name}</b> записей не найдено."
+        text = f"📭 За период <b>{period_name}</b> сборов не найдено."
     else:
         unique_users = {}
         for r in filtered:
@@ -74,9 +78,9 @@ def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name,
         lines.append(f"👥 <b>Уникальных участников:</b> {len(unique_users)}\n")
         
         for i, p in enumerate(unique_users.values(), 1):
-            username = f"@{p['username']}" if p.get('username') else "Скрыт"
+            username = f"@{p['username']}".replace('_', '\_') if p.get('username') else "Скрыт"
             uid = p.get('id', 'Неизвестно')
-            lines.append(f"{i}. {username} (ID: {uid})")
+            lines.append(f"{i}. {username} (ID: <code>{uid}</code>)")
             
         text = "\n".join(lines)
         

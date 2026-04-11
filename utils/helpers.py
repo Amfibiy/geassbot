@@ -27,10 +27,11 @@ def get_admin_groups(user_id, bot):
     
     for g in all_groups:
         try:
-            member = bot.get_chat_member(g['chat_id'], user_id)
+            chat_id = int(g['chat_id'])
+            member = bot.get_chat_member(chat_id, user_id)
             if member.status in ['creator', 'administrator']:
                 admin_groups.append(g)
-        except:
+        except Exception:
             continue
     return admin_groups
 
@@ -38,8 +39,4 @@ def format_date(ts):
     return datetime.fromtimestamp(ts).strftime('%d.%m.%Y %H:%M')
 
 def get_thread_id(message):
-    if message.reply_to_message and message.reply_to_message.is_topic_message:
-        return message.reply_to_message.message_thread_id
-    elif message.is_topic_message:
-        return message.message_thread_id
-    return None
+    return message.message_thread_id if message.is_topic_message else None

@@ -1,17 +1,25 @@
-from database.mongo import load_history_for_chat, save_user_id
+from database.mongo import load_history_for_chat, save_user_id, save_known_group
 from utils.validators import validate_date
 from .list_functions import show_result_by_date, show_menu_periods_in_ls
 
 def handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions):
     try:
+        chat_id = message.chat.id
+        
+        # Автоматическая регистрация группы при любой активности
+        if chat_id not in known_groups:
+            save_known_group(chat_id, message.chat.title or f"Группа {chat_id}")
+            known_groups.add(chat_id)
+            print(f"🆕 [AUTO-REG] Новая группа добавлена в базу: {message.chat.title}", flush=True)
+
         if not message.from_user.is_bot:
             save_user_id(
-                chat_id=message.chat.id,
+                chat_id=chat_id,
                 user_id=message.from_user.id,
                 username=message.from_user.username,
             )
     except Exception as e:
-        print(f"❌ Ошибка логирования: {e}")
+        print(f"❌ Ошибка логирования/регистрации: {e}")
 
 def handle_private_text(message, bot, active_collections, test_collection, known_groups, user_sessions):
     user_id = message.from_user.id
@@ -36,7 +44,7 @@ def handle_private_text(message, bot, active_collections, test_collection, known
                     for r in records:
                         all_p.extend(r.get('participants', []))
                     
-                    show_result_by_date(message, chat_id, all_p, parts[0], parts[1], session, bot)
+                    show_result_by_date(message, chat_id, begin, end, f"{parts[0]} — {parts[1]}", session, bot)
                     
                     session['step'] = "choice_period"
                     show_menu_periods_in_ls(message, session, bot)
@@ -53,6 +61,6 @@ def register_callbacks(bot, active_collections, test_collection, known_groups, u
     def group_msg(message):
         handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions)
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private' and not (m.text.startswith('/') or m.text.startswith('-') or m.text.isdigit()))
+    @bot.message_handler(func=lambda m: m.chat.type == 'private')
     def private_msg(message):
         handle_private_text(message, bot, active_collections, test_collection, known_groups, user_sessions)
