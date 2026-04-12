@@ -48,21 +48,24 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         show_menu_periods_in_ls(call, user_sessions[user_id], bot)
         bot.answer_callback_query(call.id)
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private' and is_potential_group_id(m.text))
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and 
+                         is_potential_group_id(m.text) and 
+                         user_sessions.get(m.from_user.id, {}).get('step') == 'list_wait_group_id')
     def handle_direct_id_input(message):
-        if user_sessions.get(message.from_user.id, {}).get('step') == 'list_input_date':
-            return
-
         chat_id = message.text.strip()
         group = get_group_by_id(chat_id)
         
         if group:
             u_id = message.from_user.id
             if u_id not in user_sessions: user_sessions[u_id] = {}
-            user_sessions[u_id].update({'list_chat_id': group['chat_id'], 'name_group': group['title'], 'step': 'list_choice_period'})
+            user_sessions[u_id].update({
+                'list_chat_id': group['chat_id'], 
+                'name_group': group['title'], 
+                'step': 'list_choice_period'
+            })
             show_menu_periods_in_ls(message, user_sessions[u_id], bot)
         else:
-            bot.send_message(message.chat.id, "❌ Группа с таким ID не найдена в базе. Проверьте ID и попробуйте снова, или отправьте /list для вызова меню.", parse_mode="HTML")
+            bot.send_message(message.chat.id, "❌ Группа с таким ID не найдена в базе.", parse_mode="HTML")
 
     @bot.callback_query_handler(func=lambda call: call.data == 'list_back_to_groups')
     def list_back_to_groups_cb(call):

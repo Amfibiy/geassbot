@@ -19,6 +19,7 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
     if not admin_groups:
         bot.send_message(message.chat.id, "📭 <b>Список групп пуст.</b>\nНапишите любое сообщение в вашей группе с ботом, чтобы она зарегистрировалась.", parse_mode="HTML")
         return
+    user_sessions[user_id]['step'] = 'list_wait_group_id'
 
     text = "📋 <b>Ваши доступные группы:</b>\n\n"
     markup = types.InlineKeyboardMarkup()
@@ -29,7 +30,6 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
         text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
         markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"list_group_{c_id}"))
 
-    # ИЗМЕНЕНИЕ: Убрали кнопку ручного ввода, изменили подсказку
     text += "\n👇 <b>Выберите группу кнопкой или просто отправьте её ID сообщением:</b>"
     
     if hasattr(message, 'message_id'):
@@ -97,8 +97,7 @@ def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name,
             p = u_info['data']
             count = u_info['count']
             username = f"@{escape_html(p.get('username'))}" if p.get('username') else "Скрыт"
-            uid = p.get('id', 'Неизвестно')
-            lines.append(f"{i}. {username} (Участий: <b>{count}</b>) (ID: <code>{uid}</code>)")
+            lines.append(f"{i}. {username} (Участий: <b>{count}</b>)")
             
         text = "\n".join(lines)
         

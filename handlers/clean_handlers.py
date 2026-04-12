@@ -13,16 +13,15 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         else:
             bot.reply_to(message, "⚠️ Очистка доступна только в ЛС.")
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private' and \
-                         (m.text.strip().startswith('-') or m.text.strip().isdigit()))
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and 
+                         (m.text.strip().startswith('-') or m.text.strip().isdigit()) and 
+                         user_sessions.get(m.from_user.id, {}).get('step') == 'clean_wait_group_id')
     def handle_manual_id_for_clean(message):
-        u_id = message.from_user.id
-        if user_sessions.get(u_id, {}).get('step') == 'list_input_date':
-            return 
-
         chat_id = message.text.strip()
         group = get_group_by_id(chat_id)
+        
         if group:
+            u_id = message.from_user.id
             if u_id not in user_sessions: user_sessions[u_id] = {}
             user_sessions[u_id].update({
                 'clean_chat_id': chat_id, 

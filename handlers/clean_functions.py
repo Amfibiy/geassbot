@@ -15,6 +15,8 @@ def handle_clean(message, bot, active_collections, test_collection, known_groups
         bot.send_message(message.chat.id, "📭 <b>Список групп пуст.</b>\nДобавьте бота в группу и выдайте права администратора.", parse_mode="HTML")
         return
 
+    user_sessions[user_id]['step'] = 'clean_wait_group_id'
+
     text = "🧹 <b>Выберите группу для очистки:</b>\n\n"
     markup = types.InlineKeyboardMarkup()
     
