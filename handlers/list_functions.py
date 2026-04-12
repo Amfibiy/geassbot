@@ -40,11 +40,9 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
 def show_menu_periods_in_ls(message_or_call, session, bot):
     chat_id = session.get('list_chat_id')
     name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
-
-    text = f"📅 <b>Выберите период для группы:</b>\n{name_group}\n(ID: <code>{chat_id}</code>)"
+    text = f"📅 <b>Выберите период статистики:</b>\n{name_group}"
     
     markup = types.InlineKeyboardMarkup()
-    # Группируем по 2 кнопки в ряд
     markup.row(
         types.InlineKeyboardButton("🕒 1 час", callback_data="list_period_1h"),
         types.InlineKeyboardButton("🌅 Сегодня", callback_data="list_period_today")
@@ -58,7 +56,7 @@ def show_menu_periods_in_ls(message_or_call, session, bot):
         types.InlineKeyboardButton("♾️ Всё время", callback_data="list_period_all")
     )
     markup.row(types.InlineKeyboardButton("⌨️ Ввести даты вручную", callback_data="list_period_manual"))
-    markup.row(types.InlineKeyboardButton("🔙 Назад к списку", callback_data="list_back_to_groups"))
+    markup.row(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_groups"))
 
     if hasattr(message_or_call, 'message'):
         bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
