@@ -137,7 +137,6 @@ def handle_join(call, bot, active_collections, test_collection, known_groups, us
     markup.add(InlineKeyboardButton(f"✅ Присоединиться ({count})", callback_data="join_collection"))
     
     try:
-        # Обновляем именно то сообщение, где кнопка
         bot.edit_message_reply_markup(
             chat_id=chat_id,
             message_id=col['main_message_id'],

@@ -44,12 +44,21 @@ def show_menu_periods_in_ls(message_or_call, session, bot):
     text = f"📅 <b>Выберите период для группы:</b>\n{name_group}\n(ID: <code>{chat_id}</code>)"
     
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("Сегодня", callback_data="list_period_today"))
-    markup.add(types.InlineKeyboardButton("Вчера", callback_data="list_period_yesterday"))
-    markup.add(types.InlineKeyboardButton("За 7 дней", callback_data="list_period_week"))
-    markup.add(types.InlineKeyboardButton("За всё время", callback_data="list_period_all"))
-    markup.add(types.InlineKeyboardButton("Ввести даты вручную", callback_data="list_period_manual"))
-    markup.add(types.InlineKeyboardButton("🔙 Назад к списку", callback_data="list_back_to_groups"))
+    # Группируем по 2 кнопки в ряд
+    markup.row(
+        types.InlineKeyboardButton("🕒 1 час", callback_data="list_period_1h"),
+        types.InlineKeyboardButton("🌅 Сегодня", callback_data="list_period_today")
+    )
+    markup.row(
+        types.InlineKeyboardButton("📅 Вчера", callback_data="list_period_yesterday"),
+        types.InlineKeyboardButton("📅 7 дней", callback_data="list_period_week")
+    )
+    markup.row(
+        types.InlineKeyboardButton("📅 Месяц", callback_data="list_period_month"),
+        types.InlineKeyboardButton("♾️ Всё время", callback_data="list_period_all")
+    )
+    markup.row(types.InlineKeyboardButton("⌨️ Ввести даты вручную", callback_data="list_period_manual"))
+    markup.row(types.InlineKeyboardButton("🔙 Назад к списку", callback_data="list_back_to_groups"))
 
     if hasattr(message_or_call, 'message'):
         bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
