@@ -4,7 +4,6 @@ from .list_functions import show_participants_list, show_menu_periods_in_ls, sho
 from database.mongo import get_group_by_id
 from utils.validators import validate_date
 
-# Функция проверки: похоже ли сообщение на ID группы
 def is_potential_group_id(text):
     if not text:
         return False
@@ -49,10 +48,8 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         show_menu_periods_in_ls(call, user_sessions[user_id], bot)
         bot.answer_callback_query(call.id)
 
-    # ИЗМЕНЕНИЕ: Ловим прямой ввод ID группы текстом
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and is_potential_group_id(m.text))
     def handle_direct_id_input(message):
-        # Игнорируем, если пользователь сейчас вводит даты
         if user_sessions.get(message.from_user.id, {}).get('step') == 'list_input_date':
             return
 
@@ -86,39 +83,46 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_period_'))
     def list_period_cb(call):
         user_id = call.from_user.id
+        period = call.data.replace('list_period_', '')
         session = user_sessions.get(user_id, {})
         chat_id = session.get('list_chat_id')
-        if not chat_id:
-            bot.answer_callback_query(call.id, "❌ Сессия истекла.", show_alert=True)
-            return
-
-        period = call.data.replace('list_period_', '')
         
-        if period == "manual":
-            session['step'] = "list_input_date"
-            bot.edit_message_text("✍️ Введите диапазон дат в формате <code>ДД-ММ-ГГГГ - ДД-ММ-ГГГГ</code>\nНапример: <code>01-01-2024 - 05-01-2024</code>", call.message.chat.id, call.message.message_id, parse_mode="HTML")
-            bot.answer_callback_query(call.id)
+        if not chat_id:
+            bot.answer_callback_query(call.id, "❌ Сессия истекла.")
             return
 
         now_ts = time.time()
-        now_dt = datetime.datetime.fromtimestamp(now_ts)
-        
-        if period == "today":
-            begin = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        begin, end, p_name = None, None, ""
+
+        if period == "1h":
+            begin = now_ts - 3600
+            end = now_ts
+            p_name = "1 час"
+        elif period == "today":
+            begin = datetime.datetime.now().replace(hour=0, minute=0, second=0).timestamp()
             end = now_ts
             p_name = "Сегодня"
         elif period == "yesterday":
-            begin = (now_dt - datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-            end = begin + 86399
+            yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+            begin = yesterday.replace(hour=0, minute=0, second=0).timestamp()
+            end = yesterday.replace(hour=23, minute=59, second=59).timestamp()
             p_name = "Вчера"
         elif period == "week":
             begin = now_ts - (7 * 86400)
             end = now_ts
             p_name = "Неделя"
+        elif period == "month":
+            begin = now_ts - (30 * 86400)
+            end = now_ts
+            p_name = "Месяц"
         elif period == "all":
-            begin = None
-            end = None
             p_name = "Всё время"
+        elif period == "manual":
+            session['step'] = 'list_input_date'
+            bot.edit_message_text("✍️ Введите период в формате:\n<code>ДД-ММ-ГГГГ - ДД-ММ-ГГГГ</code>", 
+                                 call.message.chat.id, call.message.message_id, parse_mode="HTML")
+            bot.answer_callback_query(call.id)
+            return
 
         show_result_by_date(call, chat_id, begin, end, p_name, session, bot)
         bot.answer_callback_query(call.id)

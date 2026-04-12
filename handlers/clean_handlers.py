@@ -12,12 +12,14 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
             handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions)
         else:
             bot.reply_to(message, "⚠️ Очистка доступна только в ЛС.")
+
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and \
                          (m.text.strip().startswith('-') or m.text.strip().isdigit()))
     def handle_manual_id_for_clean(message):
         u_id = message.from_user.id
         if user_sessions.get(u_id, {}).get('step') == 'list_input_date':
             return 
+
         chat_id = message.text.strip()
         group = get_group_by_id(chat_id)
         if group:
@@ -29,7 +31,7 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
             })
             show_clean_actions(message, user_sessions[u_id], bot)
         else:
-            bot.reply_to(message, "❌ Группа с таким ID не найдена в базе.")
+            bot.reply_to(message, "❌ Группа с таким ID не найдена.")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_group_'))
     def clean_group_cb(call):
@@ -59,30 +61,29 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_period_'))
     def clean_period_cb(call):
         user_id = call.from_user.id
+        period = call.data.replace('clean_period_', '')
         session = user_sessions.get(user_id, {})
         chat_id = session.get('clean_chat_id')
-        if not chat_id:
-            bot.answer_callback_query(call.id, "❌ Сессия истекла.", show_alert=True)
-            return
-
-        period = call.data.replace('clean_period_', '')
         
-        if period == "manual":
-            session['step'] = "clean_input_date"
-            bot.edit_message_text("✍️ Введите диапазон дат в формате <code>ДД-ММ-ГГГГ - ДД-ММ-ГГГГ</code>", call.message.chat.id, call.message.message_id, parse_mode="HTML")
-            bot.answer_callback_query(call.id)
+        if not chat_id:
+            bot.answer_callback_query(call.id, "❌ Сессия истекла.")
             return
 
         now_ts = time.time()
-        now_dt = datetime.datetime.fromtimestamp(now_ts)
-        
-        if period == "today":
-            begin = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        begin, end, p_name = None, None, ""
+
+        if period == "1h":
+            begin = now_ts - 3600
+            end = now_ts
+            p_name = "1 час"
+        elif period == "today":
+            begin = datetime.datetime.now().replace(hour=0, minute=0, second=0).timestamp()
             end = now_ts
             p_name = "Сегодня"
         elif period == "yesterday":
-            begin = (now_dt - datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-            end = begin + 86399
+            yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+            begin = yesterday.replace(hour=0, minute=0, second=0).timestamp()
+            end = yesterday.replace(hour=23, minute=59, second=59).timestamp()
             p_name = "Вчера"
         elif period == "week":
             begin = now_ts - (7 * 86400)
@@ -90,11 +91,16 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
             p_name = "Неделя"
         elif period == "month":
             begin = now_ts - (30 * 86400)
-            p_name = "Месяц (30 дней)"
+            end = now_ts
+            p_name = "Месяц"
         elif period == "all":
-            begin = None
-            end = None
             p_name = "Всё время"
+        elif period == "manual":
+            session['step'] = 'clean_input_date'
+            bot.edit_message_text("✍️ Введите период для удаления:\n<code>ДД-ММ-ГГГГ - ДД-ММ-ГГГГ</code>", 
+                                 call.message.chat.id, call.message.message_id, parse_mode="HTML")
+            bot.answer_callback_query(call.id)
+            return
 
         ask_confirm_clean(call, chat_id, begin, end, p_name, session, bot)
         bot.answer_callback_query(call.id)
