@@ -36,6 +36,7 @@ def register_commands(bot, active_collections, test_collection, known_groups, us
             reply_markup=markup, 
             parse_mode="Markdown"
         )
+        
     @bot.callback_query_handler(func=lambda call: call.data.startswith('add_group_'))
     def add_group_selection(call):
         chat_id = int(call.data.replace('add_group_', ''))
@@ -74,13 +75,14 @@ def register_commands(bot, active_collections, test_collection, known_groups, us
         if not chat_id:
             bot.reply_to(message, "❌ Ошибка сессии: не выбрана группа. Начните заново с команды /add.")
             return
+            
         username = text
         success = add_user_by_username(chat_id, username)
         
         if success:
             bot.reply_to(message, f"✅ Пользователь {username} успешно добавлен в базу выбранной группы!")
         else:
-            bot.reply_to(message, f"❌ Ошибка базы данных при добавлении {username}.")
+            bot.reply_to(message, f"ℹ️ Пользователь {username} уже есть в базе данных этой группы.")
 
         if 'add_chat_id' in user_sessions[user_id]:
             del user_sessions[user_id]['add_chat_id']

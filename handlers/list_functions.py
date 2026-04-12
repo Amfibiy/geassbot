@@ -29,7 +29,8 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
         text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
         markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"list_group_{c_id}"))
 
-    text += "\n👇 <b>Нажмите на кнопку выше</b>"
+    # ИЗМЕНЕНИЕ: Убрали кнопку ручного ввода, изменили подсказку
+    text += "\n👇 <b>Выберите группу кнопкой или просто отправьте её ID сообщением:</b>"
     
     if hasattr(message, 'message_id'):
         bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
@@ -74,7 +75,8 @@ def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name,
             for p in r.get('participants', []):
                 uid = p['id']
                 if uid not in unique_users:
-                    unique_users[uid] = p
+                    unique_users[uid] = {'data': p, 'count': 0}
+                unique_users[uid]['count'] += 1
         
         name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
         lines = [f"📊 <b>Статистика:</b> {name_group}"]
@@ -82,10 +84,14 @@ def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name,
         lines.append(f"🔄 <b>Проведено сборов:</b> {len(filtered)}")
         lines.append(f"👥 <b>Уникальных участников:</b> {len(unique_users)}\n")
         
-        for i, p in enumerate(unique_users.values(), 1):
+        sorted_users = sorted(unique_users.values(), key=lambda x: x['count'], reverse=True)
+        
+        for i, u_info in enumerate(sorted_users, 1):
+            p = u_info['data']
+            count = u_info['count']
             username = f"@{escape_html(p.get('username'))}" if p.get('username') else "Скрыт"
             uid = p.get('id', 'Неизвестно')
-            lines.append(f"{i}. {username} (ID: <code>{uid}</code>)")
+            lines.append(f"{i}. {username} (Участий: <b>{count}</b>) (ID: <code>{uid}</code>)")
             
         text = "\n".join(lines)
         

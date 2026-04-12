@@ -4,6 +4,13 @@ from .list_functions import show_participants_list, show_menu_periods_in_ls, sho
 from database.mongo import get_group_by_id
 from utils.validators import validate_date
 
+# Функция проверки: похоже ли сообщение на ID группы
+def is_potential_group_id(text):
+    if not text:
+        return False
+    t = text.strip()
+    return (t.startswith('-') and t[1:].isdigit()) or t.isdigit()
+
 def register_list_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
     @bot.message_handler(commands=['list'])
@@ -42,16 +49,39 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         show_menu_periods_in_ls(call, user_sessions[user_id], bot)
         bot.answer_callback_query(call.id)
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_id')
-    def handle_list_manual_id(message):
+    # ИЗМЕНЕНИЕ: Ловим прямой ввод ID группы текстом
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and is_potential_group_id(m.text))
+    def handle_direct_id_input(message):
+        # Игнорируем, если пользователь сейчас вводит даты
+        if user_sessions.get(message.from_user.id, {}).get('step') == 'list_input_date':
+            return
+
         chat_id = message.text.strip()
         group = get_group_by_id(chat_id)
+        
         if group:
             u_id = message.from_user.id
+            if u_id not in user_sessions: user_sessions[u_id] = {}
             user_sessions[u_id].update({'list_chat_id': group['chat_id'], 'name_group': group['title'], 'step': 'list_choice_period'})
             show_menu_periods_in_ls(message, user_sessions[u_id], bot)
         else:
-            bot.send_message(message.chat.id, "❌ Группа с таким ID не найдена в базе.")
+            bot.send_message(message.chat.id, "❌ Группа с таким ID не найдена в базе. Проверьте ID и попробуйте снова, или отправьте /list для вызова меню.", parse_mode="HTML")
+
+    @bot.callback_query_handler(func=lambda call: call.data == 'list_back_to_groups')
+    def list_back_to_groups_cb(call):
+        show_participants_list(call, bot, active_collections, test_collection, known_groups, user_sessions)
+        bot.answer_callback_query(call.id)
+
+    @bot.callback_query_handler(func=lambda call: call.data == 'list_back_to_periods')
+    def list_back_to_periods_cb(call):
+        user_id = call.from_user.id
+        session = user_sessions.get(user_id, {})
+        if session.get('list_chat_id'):
+            session['step'] = 'list_choice_period'
+            show_menu_periods_in_ls(call, session, bot)
+        else:
+            bot.answer_callback_query(call.id, "❌ Сессия устарела. Вызовите /list заново.", show_alert=True)
+        bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_period_'))
     def list_period_cb(call):
