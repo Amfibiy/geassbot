@@ -96,8 +96,10 @@ def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name,
         for i, u_info in enumerate(sorted_users, 1):
             p = u_info['data']
             count = u_info['count']
-            username = f"@{escape_html(p.get('username'))}" if p.get('username') else "Скрыт"
-            lines.append(f"{i}. {username} (Участий: <b>{count}</b>)")
+            name = escape_html(p.get('name', 'Без имени'))
+            username = f" (@{escape_html(p.get('username'))})" if p.get('username') else ""
+            
+            lines.append(f"{i}. {name}{username} (Участий: <b>{count}</b>)")
             
         text = "\n".join(lines)
         
