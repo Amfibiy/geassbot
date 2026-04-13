@@ -1,9 +1,12 @@
-import time
-import datetime
-from .list_functions import show_participants_list, show_menu_periods_in_ls, show_result_by_date
 from database.mongo import get_group_by_id
 from utils.validators import validate_date
-
+from .list_functions import (
+    show_participants_list, 
+    show_menu_periods_in_ls, 
+    show_result_by_date,
+    show_today_hours_menu,
+    show_week_days_menu, 
+)
 def is_potential_group_id(text):
     if not text:
         return False
@@ -72,83 +75,82 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         show_participants_list(call, bot, active_collections, test_collection, known_groups, user_sessions)
         bot.answer_callback_query(call.id)
 
-    @bot.callback_query_handler(func=lambda call: call.data == 'list_back_to_periods')
-    def list_back_to_periods_cb(call):
-        user_id = call.from_user.id
-        session = user_sessions.get(user_id, {})
-        if session.get('list_chat_id'):
-            session['step'] = 'list_choice_period'
-            show_menu_periods_in_ls(call, session, bot)
-        else:
-            bot.answer_callback_query(call.id, "❌ Сессия устарела. Вызовите /list заново.", show_alert=True)
+    @bot.callback_query_handler(func=lambda call: call.data == "list_back_to_periods")
+    def handle_back_to_main(call):
+        u_id = call.from_user.id
+        session = user_sessions.get(u_id)
+        if session:
+            show_menu_periods_in_ls(call.message, session, bot)
         bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_period_'))
-    def list_period_cb(call):
-        user_id = call.from_user.id
-        period = call.data.replace('list_period_', '')
-        session = user_sessions.get(user_id, {})
+    def handle_specific_period(call):
+        u_id = call.from_user.id
+        session = user_sessions.get(u_id)
+        if not session: return
+
         chat_id = session.get('list_chat_id')
+        data = call.data.split('_')
         
-        if not chat_id:
-            bot.answer_callback_query(call.id, "❌ Сессия истекла.")
-            return
-
-        now_ts = time.time()
-        begin, end, p_name = None, None, ""
-
-        if period == "1h":
-            begin = now_ts - 3600
-            end = now_ts
-            p_name = "1 час"
-        elif period == "today":
-            begin = datetime.datetime.now().replace(hour=0, minute=0, second=0).timestamp()
-            end = now_ts
-            p_name = "Сегодня"
-        elif period == "yesterday":
-            yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-            begin = yesterday.replace(hour=0, minute=0, second=0).timestamp()
-            end = yesterday.replace(hour=23, minute=59, second=59).timestamp()
-            p_name = "Вчера"
-        elif period == "week":
-            begin = now_ts - (7 * 86400)
-            end = now_ts
-            p_name = "Неделя"
-        elif period == "month":
-            begin = now_ts - (30 * 86400)
-            end = now_ts
-            p_name = "Месяц"
-        elif period == "all":
-            p_name = "Всё время"
-        elif period == "manual":
-            session['step'] = 'list_input_date'
-            bot.edit_message_text("✍️ Введите период в формате:\n<code>ДД-ММ-ГГГГ - ДД-ММ-ГГГГ</code>", 
-                                 call.message.chat.id, call.message.message_id, parse_mode="HTML")
-            bot.answer_callback_query(call.id)
-            return
-
-        show_result_by_date(call, chat_id, begin, end, p_name, session, bot)
+        show_result_by_date(call, chat_id, float(data[2]), float(data[3]), data[4], session, bot)
         bot.answer_callback_query(call.id)
 
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
     def handle_list_manual_date(message):
         u_id = message.from_user.id
+        if u_id not in user_sessions:
+            bot.reply_to(message, "❌ Сессия истекла. Начните заново с команды /list")
+            return
         session = user_sessions[u_id]
         chat_id = session.get('list_chat_id')
-        text = message.text.strip()
+        raw = message.text.strip().replace(" ", "").replace("-", ".").replace("/", ".")
+        parts = raw.split(".")
+        if len(parts) >= 6:
+            try:
+                date_str1 = f"{parts[0]}.{parts[1]}.{parts[2]}"
+                date_str2 = f"{parts[3]}.{parts[4]}.{parts[5]}"
+                d1 = validate_date(date_str1)
+                d2 = validate_date(date_str2)
+            
+                if d1 and d2:
+                    begin = d1.timestamp()
+                    end = d2.replace(hour=23, minute=59, second=59).timestamp()
+                    p_name = f"{date_str1} — {date_str2}"
+                    show_result_by_date(message, chat_id, begin, end, p_name, session, bot)
+                    session['step'] = "list_choice_period"
+                    return
+                else:
+                    bot.reply_to(message, "❌ Не удалось распознать даты. Убедитесь, что они реальны (например, 13.04.26).")
+                    return
+            except Exception as e:
+                print(f"Ошибка парсинга даты: {e}")
+                bot.reply_to(message, "❌ Произошла ошибка при обработке даты.")
+                return
 
-        if " - " in text:
-            parts = text.split(" - ")
-            d1 = validate_date(parts[0].strip())
-            d2 = validate_date(parts[1].strip())
-            if d1 and d2:
-                begin = d1.timestamp()
-                end = d2.replace(hour=23, minute=59, second=59).timestamp()
-                p_name = f"{parts[0].strip()} — {parts[1].strip()}"
-                
-                show_result_by_date(message, chat_id, begin, end, p_name, session, bot)
-                session['step'] = "list_choice_period" # Возвращаем на шаг назад
-            else:
-                bot.reply_to(message, "❌ Неверный формат. Пример: 01-01-2024 - 05-01-2024")
-        else:
-            bot.reply_to(message, "✍️ Используйте разделитель ' - ' между датами.")
+        error_text = (
+            "❌ <b>Неверный формат.</b>\n\n"
+            "Введите две даты слитно через точки:\n"
+            "<code>13.04.26.14.04.26</code>\n\n"
+            "Или через дефис:\n"
+            "<code>13.04.2026 - 14.04.2026</code>"
+        )
+        bot.reply_to(message, error_text, parse_mode="HTML")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('list_view_'))
+    def handle_view_choice(call):
+        u_id = call.from_user.id
+        session = user_sessions.get(u_id)
+        if not session: return
+
+        choice = call.data.replace('list_view_', '')
+        if choice == 'today':
+            show_today_hours_menu(call, session, bot)
+        elif choice == 'week':
+            show_week_days_menu(call, session, bot)  
+        elif choice == 'month':
+            bot.answer_callback_query(call.id, "Выбор за месяц") 
+        elif choice == 'manual':
+            session['step'] = 'list_input_date'
+            bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id)
+
+    

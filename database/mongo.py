@@ -31,9 +31,7 @@ def get_group_by_id(chat_id):
 
 def save_history_record(collection_data):
     chat_id = int(collection_data['chat_id'])
-    
     save_known_group(chat_id, collection_data.get('title', f"Группа {chat_id}"))
-
     clean_participants = []
     for p in collection_data.get('participants', []):
         clean_participants.append({
@@ -41,15 +39,15 @@ def save_history_record(collection_data):
             'username': p.get('username'),
             'name': p.get('name', 'Участник')
         })
-        
     record = {
         'chat_id': chat_id,
         'title': collection_data.get('title'),
-        'date': datetime.datetime.now(),
+        'date': datetime.datetime.now(), 
         'participants': clean_participants,
         'is_test': collection_data.get('is_test', False)
     }
     history_col.insert_one(record)
+    print(f"✅ [DB] Сбор в чате {chat_id} сохранен отдельно.")
 
 def load_history_for_chat(chat_id, begin_ts, end_ts):
     query = {'chat_id': int(chat_id)}

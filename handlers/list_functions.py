@@ -1,4 +1,3 @@
-import time
 import datetime
 from telebot import types
 from database.mongo import load_history_for_chat
@@ -66,52 +65,73 @@ def show_menu_periods_in_ls(message_or_call, session, bot):
 def show_result_by_date(message_or_call, chat_id, begin_ts, end_ts, period_name, session, bot):
     records = load_history_for_chat(chat_id, begin_ts, end_ts)
     
-    filtered = []
-    for r in records:
-        if begin_ts and end_ts:
-            if begin_ts <= r['date'].timestamp() <= end_ts:
-                filtered.append(r)
-        else:
-            filtered.append(r)
-
-    if not filtered:
+    if not records:
         text = f"📭 За период <b>{period_name}</b> сборов не найдено."
     else:
-        unique_users = {}
-        for r in filtered:
-            for p in r.get('participants', []):
-                uid = p['id']
-                if uid not in unique_users:
-                    unique_users[uid] = {'data': p, 'count': 0}
-                unique_users[uid]['count'] += 1
-        
         name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
-        lines = [f"📊 <b>Статистика:</b> {name_group}"]
-        lines.append(f"📅 <b>Период:</b> {period_name}")
-        lines.append(f"🔄 <b>Проведено сборов:</b> {len(filtered)}")
-        lines.append(f"👥 <b>Уникальных участников:</b> {len(unique_users)}\n")
+        lines = [
+            f"📊 <b>Статистика:</b> {name_group}",
+            f"📅 <b>Период:</b> {period_name}",
+            f"🔄 <b>Всего сборов:</b> {len(records)}\n"
+        ]
         
-        sorted_users = sorted(unique_users.values(), key=lambda x: x['count'], reverse=True)
-        
-        for i, u_info in enumerate(sorted_users, 1):
-            p = u_info['data']
-            count = u_info['count']
-            name = escape_html(p.get('name', 'Без имени'))
-            username = f" (@{escape_html(p.get('username'))})" if p.get('username') else ""
+        for r in records:
+            participants = r.get('participants', [])
+            p_count = len(participants)
+            dt = datetime.datetime.fromtimestamp(r.get('start_time', 0))
+            time_label = dt.strftime("%H:%M")
             
-            lines.append(f"{i}. {name}{username} (Участий: <b>{count}</b>)")
+            lines.append(f"⏱ <b>Время сбора: {time_label} ({p_count})</b>")
             
+            if participants:
+                for p in participants:
+                    p_name = escape_html(p.get('name', 'Без имени'))
+                    lines.append(f"{p_name}")
+            else:
+                lines.append("<i>Список пуст</i>")
+            
+            lines.append("") 
+
         text = "\n".join(lines)
-        
         if len(text) > 4000:
-            text = text[:3900] + "\n... (список обрезан из-за лимитов)"
+            text = text[:3900] + "\n... (список слишком длинный)"
 
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔙 Назад к периодам", callback_data="list_back_to_periods"))
     
-    chat_to_send = message_or_call.message.chat.id if hasattr(message_or_call, 'message') else message_or_call.chat.id
+    chat_id_to_send = message_or_call.message.chat.id if hasattr(message_or_call, 'message') else message_or_call.chat.id
+    bot.send_message(chat_id_to_send, text, parse_mode="HTML", reply_markup=markup)
+
+def show_today_hours_menu(call, session, bot):
+    markup = types.InlineKeyboardMarkup(row_width=3)
+    now = datetime.datetime.now()
+    buttons = []
+
+    for h in range(0, 24, 3):
+        ts_start = now.replace(hour=h, minute=0, second=0).timestamp()
+        ts_end = now.replace(hour=h+2, minute=59, second=59).timestamp()
+        time_range = f"{h:02d}:00-{h+2:02d}:59"
+        buttons.append(types.InlineKeyboardButton(text=time_range, callback_data=f"list_period_{ts_start}_{ts_end}_{time_range}"))
     
-    if hasattr(message_or_call, 'message'):
-        bot.edit_message_text(text, chat_to_send, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
-    else:
-        bot.send_message(chat_to_send, text, reply_markup=markup, parse_mode="HTML")
+    day_start = now.replace(hour=0, minute=0, second=0).timestamp()
+    markup.add(types.InlineKeyboardButton("🌅 Весь день", callback_data=f"list_period_{day_start}_{now.timestamp()}_Сегодня"))
+    markup.add(*buttons)
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
+    
+    bot.edit_message_text("🕒 Выберите временной интервал за сегодня:", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+def show_week_days_menu(call, session, bot):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    now = datetime.datetime.now()
+    buttons = []
+    for i in range(7):
+        day = now - datetime.timedelta(days=i)
+        ts_start = day.replace(hour=0, minute=0, second=0).timestamp()
+        ts_end = day.replace(hour=23, minute=59, second=59).timestamp()
+        date_str = day.strftime("%d.%m")
+        label = "Сегодня" if i == 0 else "Вчера" if i == 1 else date_str
+        buttons.append(types.InlineKeyboardButton(text=f"📅 {label}", callback_data=f"list_period_{ts_start}_{ts_end}_{date_str}"))
+    
+    markup.add(*buttons)
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
+    bot.edit_message_text("🗓 Выберите день недели:", call.message.chat.id, call.message.message_id, reply_markup=markup)

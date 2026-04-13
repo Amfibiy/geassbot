@@ -1,5 +1,4 @@
 import time
-import random
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config.settings import COLLECTION_DURATION
 from database.mongo import save_history_record, get_all_members_ids
