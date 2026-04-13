@@ -2,11 +2,8 @@ import datetime
 from database.mongo import get_group_by_id
 from utils.validators import validate_date
 from .list_functions import (
-    show_participants_list, 
-    show_menu_periods_in_ls, 
-    show_result_by_date,
-    show_today_hours_menu,
-    show_week_days_menu, 
+    show_participants_list, show_menu_periods_in_ls, show_result_by_date,
+    show_today_hours_menu, show_week_days_menu, show_months_menu, user_tz
 )
 def is_potential_group_id(text):
     if not text:
@@ -89,12 +86,11 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         u_id = call.from_user.id
         session = user_sessions.get(u_id)
         if not session: return
-
-        chat_id = session.get('list_chat_id')
+        
         data = call.data.split('_')
+        chat_id = session.get('list_chat_id')
         
         show_result_by_date(call, chat_id, float(data[2]), float(data[3]), data[4], session, bot)
-        bot.answer_callback_query(call.id)
 
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
     def handle_list_manual_date(message):
@@ -145,24 +141,22 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
 
         choice = call.data.replace('list_view_', '')
         chat_id = session.get('list_chat_id')
-        now_ts = datetime.datetime.now().timestamp()
+        now_dt = datetime.datetime.now(user_tz)
 
         if choice == 'today':
             show_today_hours_menu(call, session, bot)
         elif choice == 'week':
             show_week_days_menu(call, session, bot)
+        elif choice == 'month':
+            show_months_menu(call, session, bot)
         elif choice == 'yesterday':
-            yest = datetime.datetime.now() - datetime.timedelta(days=1)
-            b = yest.replace(hour=0, minute=0, second=0).timestamp()
-            e = yest.replace(hour=23, minute=59, second=59).timestamp()
+            yest = now_dt - datetime.timedelta(days=1)
+            b = yest.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+            e = yest.replace(hour=23, minute=59, second=59, microsecond=0).timestamp()
             show_result_by_date(call, chat_id, b, e, "Вчера", session, bot)
         elif choice == 'all':
-            show_result_by_date(call, chat_id, 0, now_ts, "Всё время", session, bot)
-        elif choice == 'month':
-            bot.answer_callback_query(call.id, "Выбор за месяц в разработке")
+            show_result_by_date(call, chat_id, 0, now_dt.timestamp(), "Всё время", session, bot)
         elif choice == 'manual':
             session['step'] = 'list_input_date'
             bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id)
-    
-        bot.answer_callback_query(call.id)
     
