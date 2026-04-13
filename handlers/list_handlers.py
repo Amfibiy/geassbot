@@ -1,3 +1,4 @@
+import datetime
 from database.mongo import get_group_by_id
 from utils.validators import validate_date
 from .list_functions import (
@@ -143,14 +144,25 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         if not session: return
 
         choice = call.data.replace('list_view_', '')
+        chat_id = session.get('list_chat_id')
+        now_ts = datetime.datetime.now().timestamp()
+
         if choice == 'today':
             show_today_hours_menu(call, session, bot)
         elif choice == 'week':
-            show_week_days_menu(call, session, bot)  
+            show_week_days_menu(call, session, bot)
+        elif choice == 'yesterday':
+            yest = datetime.datetime.now() - datetime.timedelta(days=1)
+            b = yest.replace(hour=0, minute=0, second=0).timestamp()
+            e = yest.replace(hour=23, minute=59, second=59).timestamp()
+            show_result_by_date(call, chat_id, b, e, "Вчера", session, bot)
+        elif choice == 'all':
+            show_result_by_date(call, chat_id, 0, now_ts, "Всё время", session, bot)
         elif choice == 'month':
-            bot.answer_callback_query(call.id, "Выбор за месяц") 
+            bot.answer_callback_query(call.id, "Выбор за месяц в разработке")
         elif choice == 'manual':
             session['step'] = 'list_input_date'
             bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id)
-
+    
+        bot.answer_callback_query(call.id)
     
