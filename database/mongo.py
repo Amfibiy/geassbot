@@ -1,6 +1,7 @@
 import pymongo
 import datetime
 from config.settings import MONGO_URI
+from bson import ObjectId
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client['telegram_bot_db']
@@ -115,3 +116,11 @@ def add_user_by_username(chat_id, username):
 def get_all_members_ids(chat_id):
     members = members_col.find({'chat_id': int(chat_id)})
     return [m['user_id'] for m in members if m.get('user_id') is not None]
+
+def delete_history_record_by_id(record_id):
+    try:
+        result = history_col.delete_one({'_id': ObjectId(record_id)})
+        return result.deleted_count > 0
+    except Exception as e:
+        print(f"❌ Ошибка при удалении записи {record_id}: {e}")
+        return False

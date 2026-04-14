@@ -1,8 +1,10 @@
-import time
 import datetime
-from .clean_functions import handle_clean, show_clean_actions, ask_confirm_clean, execute_delete
-from database.mongo import get_group_by_id
+from database.mongo import get_group_by_id, delete_history_record_by_id
 from utils.validators import validate_date
+from .clean_functions import (
+    handle_clean, show_clean_periods_menu, show_clean_hours_menu, 
+    show_records_for_cleaning, ask_confirm_clean, execute_delete
+)
 
 def register_clean_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
@@ -10,127 +12,93 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
     def clean_command(message):
         if message.chat.type == 'private':
             handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions)
-        else:
-            bot.reply_to(message, "⚠️ Очистка доступна только в ЛС.")
 
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and 
-                         (m.text.strip().startswith('-') or m.text.strip().isdigit()) and 
                          user_sessions.get(m.from_user.id, {}).get('step') == 'clean_wait_group_id')
     def handle_manual_id_for_clean(message):
         chat_id = message.text.strip()
         group = get_group_by_id(chat_id)
-        
         if group:
             u_id = message.from_user.id
             if u_id not in user_sessions: user_sessions[u_id] = {}
-            user_sessions[u_id].update({
-                'clean_chat_id': chat_id, 
-                'name_group': group['title'],
-                'step': 'clean_choice_period'
-            })
-            show_clean_actions(message, user_sessions[u_id], bot)
+            user_sessions[u_id].update({'clean_chat_id': int(chat_id), 'step': 'clean_choice_period'})
+            
+            # Создаем объект-заглушку для совместимости с функциями, ожидающими call
+            class FakeCall:
+                def __init__(self, m): self.message = m; self.from_user = m.from_user
+            show_clean_periods_menu(FakeCall(message), user_sessions[u_id], bot)
         else:
-            bot.reply_to(message, "❌ Группа с таким ID не найдена.")
+            bot.reply_to(message, "❌ Группа не найдена. Проверьте ID.")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_group_'))
-    def clean_group_cb(call):
-        user_id = call.from_user.id
-        chat_id = call.data.replace('clean_group_', '')
-        
-        group = get_group_by_id(chat_id)
-        name_group = group['title'] if group else f"Группа {chat_id}"
-        
-        if user_id not in user_sessions: user_sessions[user_id] = {}
-        user_sessions[user_id].update({'clean_chat_id': chat_id, 'name_group': name_group, 'step': 'clean_choice_period'})
-        
-        show_clean_actions(call, user_sessions[user_id], bot)
-        bot.answer_callback_query(call.id)
+    def handle_clean_group_choice(call):
+        chat_id = int(call.data.replace('clean_group_', ''))
+        u_id = call.from_user.id
+        if u_id not in user_sessions: user_sessions[u_id] = {}
+        user_sessions[u_id]['clean_chat_id'] = chat_id
+        show_clean_periods_menu(call, user_sessions[u_id], bot)
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'clean_input_id')
-    def handle_clean_manual_id(message):
-        chat_id = message.text.strip()
-        group = get_group_by_id(chat_id)
-        if group:
-            u_id = message.from_user.id
-            user_sessions[u_id].update({'clean_chat_id': group['chat_id'], 'name_group': group['title'], 'step': 'clean_choice_period'})
-            show_clean_actions(message, user_sessions[u_id], bot)
-        else:
-            bot.send_message(message.chat.id, "❌ Группа с таким ID не найдена в базе.")
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_period_'))
-    def clean_period_cb(call):
-        user_id = call.from_user.id
-        period = call.data.replace('clean_period_', '')
-        session = user_sessions.get(user_id, {})
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_view_'))
+    def handle_clean_view(call):
+        u_id = call.from_user.id
+        session = user_sessions.get(u_id)
+        if not session: return
+        
+        choice = call.data.replace('clean_view_', '')
+        now = datetime.datetime.now()
         chat_id = session.get('clean_chat_id')
-        
-        if not chat_id:
-            bot.answer_callback_query(call.id, "❌ Сессия истекла.")
-            return
 
-        now_ts = time.time()
-        begin, end, p_name = None, None, ""
-
-        if period == "1h":
-            begin = now_ts - 3600
-            end = now_ts
-            p_name = "1 час"
-        elif period == "today":
-            begin = datetime.datetime.now().replace(hour=0, minute=0, second=0).timestamp()
-            end = now_ts
-            p_name = "Сегодня"
-        elif period == "yesterday":
-            yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-            begin = yesterday.replace(hour=0, minute=0, second=0).timestamp()
-            end = yesterday.replace(hour=23, minute=59, second=59).timestamp()
-            p_name = "Вчера"
-        elif period == "week":
-            begin = now_ts - (7 * 86400)
-            end = now_ts
-            p_name = "Неделя"
-        elif period == "month":
-            begin = now_ts - (30 * 86400)
-            end = now_ts
-            p_name = "Месяц"
-        elif period == "all":
-            p_name = "Всё время"
-        elif period == "manual":
+        if choice == 'today':
+            b = int(now.replace(hour=0, minute=0, second=0).timestamp())
+            show_clean_hours_menu(call, bot, b, int(now.timestamp()), "Сегодня")
+        elif choice == 'yesterday':
+            yest = now - datetime.timedelta(days=1)
+            b = int(yest.replace(hour=0, minute=0, second=0).timestamp())
+            e = int(yest.replace(hour=23, minute=59, second=59).timestamp())
+            show_clean_hours_menu(call, bot, b, e, "Вчера")
+        elif choice == 'week':
+            b = int((now - datetime.timedelta(days=7)).timestamp())
+            show_records_for_cleaning(call, chat_id, b, int(now.timestamp()), "Неделя", bot)
+        elif choice == 'month':
+            b = int((now - datetime.timedelta(days=30)).timestamp())
+            show_records_for_cleaning(call, chat_id, b, int(now.timestamp()), "Месяц", bot)
+        elif choice == 'all':
+            show_records_for_cleaning(call, chat_id, 0, int(now.timestamp()), "Всё время", bot)
+        elif choice == 'manual':
             session['step'] = 'clean_input_date'
-            bot.edit_message_text("✍️ Введите период для удаления:\n<code>ДД-ММ-ГГГГ - ДД-ММ-ГГГГ</code>", 
-                                 call.message.chat.id, call.message.message_id, parse_mode="HTML")
-            bot.answer_callback_query(call.id)
-            return
-
-        ask_confirm_clean(call, chat_id, begin, end, p_name, session, bot)
+            bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id)
         bot.answer_callback_query(call.id)
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'clean_input_date')
-    def handle_clean_manual_date(message):
-        u_id = message.from_user.id
-        session = user_sessions[u_id]
-        chat_id = session.get('clean_chat_id')
-        text = message.text.strip()
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_drill_'))
+    def handle_clean_drill(call):
+        parts = call.data.split('_')
+        b, e, label = int(parts[2]), int(parts[3]), parts[4]
+        chat_id = user_sessions[call.from_user.id].get('clean_chat_id')
+        show_records_for_cleaning(call, chat_id, b, e, label, bot)
 
-        if " - " in text:
-            parts = text.split(" - ")
-            d1 = validate_date(parts[0].strip())
-            d2 = validate_date(parts[1].strip())
-            if d1 and d2:
-                begin = d1.timestamp()
-                end = d2.replace(hour=23, minute=59, second=59).timestamp()
-                p_name = f"{parts[0].strip()} — {parts[1].strip()}"
-                
-                ask_confirm_clean(message, chat_id, begin, end, p_name, session, bot)
-                session['step'] = "clean_choice_period"
-            else:
-                bot.reply_to(message, "❌ Неверный формат.")
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_rec_'))
+    def handle_delete_specific_record(call):
+        rec_id = call.data.replace('clean_rec_', '')
+        if delete_history_record_by_id(rec_id):
+            bot.answer_callback_query(call.id, "✅ Запись удалена")
+            show_clean_periods_menu(call, user_sessions[call.from_user.id], bot)
         else:
-            bot.reply_to(message, "✍️ Используйте разделитель ' - '.")
+            bot.answer_callback_query(call.id, "❌ Ошибка при удалении", show_alert=True)
 
-    @bot.callback_query_handler(func=lambda call: call.data in ["clean_confirm_yes", "clean_confirm_no"])
-    def do_clean_final_cb(call):
-        if call.data == "clean_confirm_yes":
-            execute_delete(call, bot, user_sessions)
-        else:
-            bot.edit_message_text("❌ Очистка отменена.", call.message.chat.id, call.message.message_id)
-        bot.answer_callback_query(call.id)
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_bulk_'))
+    def handle_bulk_confirm_request(call):
+        parts = call.data.split('_')
+        chat_id = user_sessions[call.from_user.id].get('clean_chat_id')
+        ask_confirm_clean(call, chat_id, int(parts[2]), int(parts[3]), "выбранный период", user_sessions[call.from_user.id], bot)
+
+    @bot.callback_query_handler(func=lambda call: call.data == 'clean_confirm_yes')
+    def handle_final_yes(call):
+        execute_delete(call, bot, user_sessions)
+
+    @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_groups')
+    def handle_back_groups(call):
+        handle_clean(call.message, bot, None, None, None, user_sessions)
+
+    @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_periods')
+    def handle_back_periods(call):
+        show_clean_periods_menu(call, user_sessions.get(call.from_user.id, {}), bot)
