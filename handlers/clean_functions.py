@@ -28,23 +28,27 @@ def handle_clean(message, bot, active_collections, test_collection, known_groups
     text += "\n👇 Или введите ID группы вручную:"
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
-def show_clean_periods_menu(call, session, bot):
-    markup = types.InlineKeyboardMarkup()
-    markup.row(
-        types.InlineKeyboardButton("🌅 Сегодня", callback_data="clean_view_today"),
-        types.InlineKeyboardButton("📅 Вчера", callback_data="clean_view_yesterday")
-    )
-    markup.row(
-        types.InlineKeyboardButton("🗓 Неделя", callback_data="clean_view_week"),
-        types.InlineKeyboardButton("📆 Месяц", callback_data="clean_view_month")
-    )
-    markup.row(types.InlineKeyboardButton("♾️ Всё время", callback_data="clean_view_all"))
-    markup.row(types.InlineKeyboardButton("⌨️ Ввести даты вручную", callback_data="clean_view_manual"))
-    markup.row(types.InlineKeyboardButton("🔙 Назад к группам", callback_data="clean_back_to_groups"))
-
+def show_clean_periods_menu(message, session, bot, edit=True):
     chat_id = session.get('clean_chat_id')
-    text = f"🧹 <b>Выберите период для ОЧИСТКИ в группе:</b>\n<code>{chat_id}</code>"
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
+    
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btns = [
+        types.InlineKeyboardButton("🌅 Сегодня", callback_data="clean_choice_today"),
+        types.InlineKeyboardButton("📅 Вчера", callback_data="clean_choice_yesterday"),
+        types.InlineKeyboardButton("🗓 Неделя", callback_data="clean_choice_week"),
+        types.InlineKeyboardButton("📆 Месяц", callback_data="clean_choice_month"),
+        types.InlineKeyboardButton("♾️ Всё время", callback_data="clean_choice_all"),
+        types.InlineKeyboardButton("⌨️ Ввести даты", callback_data="clean_choice_manual")
+    ]
+    markup.add(*btns)
+    markup.add(types.InlineKeyboardButton("🔙 Назад к списку групп", callback_data="clean_back_to_groups"))
+
+    text = f"🧹 <b>Очистка истории</b>\n\nВыбрана группа: <code>{chat_id}</code>\nВыберите период:"
+
+    if edit:
+        bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="HTML")
+    else:
+        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_clean_hours_menu(call, bot, begin_ts, end_ts, day_label):
     markup = types.InlineKeyboardMarkup(row_width=3)

@@ -16,19 +16,25 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and 
                          user_sessions.get(m.from_user.id, {}).get('step') == 'clean_wait_group_id')
     def handle_manual_id_for_clean(message):
-        chat_id = message.text.strip()
+        chat_id_raw = message.text.strip()
+        try:
+            chat_id = int(chat_id_raw)
+        except ValueError:
+            bot.reply_to(message, "❌ ID группы должен быть числом.")
+            return
+
         group = get_group_by_id(chat_id)
         if group:
             u_id = message.from_user.id
             if u_id not in user_sessions: user_sessions[u_id] = {}
-            user_sessions[u_id].update({'clean_chat_id': int(chat_id), 'step': 'clean_choice_period'})
             
-            # Создаем объект-заглушку для совместимости с функциями, ожидающими call
-            class FakeCall:
-                def __init__(self, m): self.message = m; self.from_user = m.from_user
-            show_clean_periods_menu(FakeCall(message), user_sessions[u_id], bot)
+            user_sessions[u_id].update({
+                'clean_chat_id': chat_id,
+                'step': 'clean_choice_period'
+            })
+            show_clean_periods_menu(message, user_sessions[u_id], bot, edit=False)
         else:
-            bot.reply_to(message, "❌ Группа не найдена. Проверьте ID.")
+            bot.reply_to(message, "❌ Группа не найдена. Убедитесь, что бот там есть.")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_group_'))
     def handle_clean_group_choice(call):
@@ -37,6 +43,14 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         if u_id not in user_sessions: user_sessions[u_id] = {}
         user_sessions[u_id]['clean_chat_id'] = chat_id
         show_clean_periods_menu(call, user_sessions[u_id], bot)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_group_'))
+    def handle_clean_group_selection(call):
+        chat_id = int(call.data.replace('clean_group_', ''))
+        u_id = call.from_user.id
+        user_sessions[u_id]['clean_chat_id'] = chat_id
+        user_sessions[u_id]['step'] = 'clean_choice_period'
+        show_clean_periods_menu(call.message, user_sessions[u_id], bot, edit=True)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_view_'))
     def handle_clean_view(call):
