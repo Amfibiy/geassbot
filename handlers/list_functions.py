@@ -139,43 +139,9 @@ def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, ses
     else:
         bot.send_message(cid, text, reply_markup=markup, parse_mode="HTML")
 
-def show_today_hours_menu(call, session, bot):
-    markup = types.InlineKeyboardMarkup(row_width=3)
-    now = datetime.datetime.now()
-    buttons = []
-
-    for h in range(0, 24, 3):
-        ts_start = now.replace(hour=h, minute=0, second=0).timestamp()
-        ts_end = now.replace(hour=h+2, minute=59, second=59).timestamp()
-        time_range = f"{h:02d}:00-{h+2:02d}:59"
-        buttons.append(types.InlineKeyboardButton(text=time_range, callback_data=f"list_period_{ts_start}_{ts_end}_{time_range}"))
-    
-    day_start = now.replace(hour=0, minute=0, second=0).timestamp()
-    markup.add(types.InlineKeyboardButton("🌅 Весь день", callback_data=f"list_period_{day_start}_{now.timestamp()}_Сегодня"))
-    markup.add(*buttons)
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
-    
-    bot.edit_message_text("🕒 Выберите временной интервал за сегодня:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-def show_week_days_menu(call, session, bot):
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    now = datetime.datetime.now()
-    buttons = []
-    for i in range(7):
-        day = now - datetime.timedelta(days=i)
-        ts_start = day.replace(hour=0, minute=0, second=0).timestamp()
-        ts_end = day.replace(hour=23, minute=59, second=59).timestamp()
-        date_str = day.strftime("%d.%m")
-        label = "Сегодня" if i == 0 else "Вчера" if i == 1 else date_str
-        buttons.append(types.InlineKeyboardButton(text=f"📅 {label}", callback_data=f"list_period_{ts_start}_{ts_end}_{date_str}"))
-    
-    markup.add(*buttons)
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
-    bot.edit_message_text("🗓 Выберите день недели:", call.message.chat.id, call.message.message_id, reply_markup=markup)
-
 def show_all_time_menu(call, session, bot):
     markup = types.InlineKeyboardMarkup(row_width=2)
-    now = datetime.datetime.now()
+    now = datetime.datetime.utcnow()
     
     markup.add(types.InlineKeyboardButton("♾️ Вся история", callback_data=f"list_period_0_{int(now.timestamp())}_Вся история"))
     
