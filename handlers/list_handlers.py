@@ -92,12 +92,11 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         u_id = call.from_user.id
         session = user_sessions.get(u_id)
         if not session: return
-        
-        data = call.data.split('_')
+        data = call.data.split('_', 4)
         chat_id = session.get('list_chat_id')
-        
         show_result_by_date(call, chat_id, float(data[2]), float(data[3]), data[4], session, bot)
-
+        bot.answer_callback_query(call.id)
+        
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
     def handle_list_manual_date(message):
         u_id = message.from_user.id
