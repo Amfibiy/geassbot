@@ -3,7 +3,7 @@ from telebot import types
 from database.mongo import delete_history_records, delete_history_record_by_id, load_history_for_chat
 from utils.helpers import get_admin_groups
 
-def handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions):
+def handle_clean(message, bot, active_collections, test_collection, known_groups, user_sessions, edit=False):
     admin_groups = get_admin_groups(message.from_user.id, bot)
     user_id = message.from_user.id
     
@@ -11,7 +11,11 @@ def handle_clean(message, bot, active_collections, test_collection, known_groups
         user_sessions[user_id] = {}
 
     if not admin_groups:
-        bot.send_message(message.chat.id, "📭 <b>Список групп пуст.</b>", parse_mode="HTML")
+        text = "📭 <b>Список групп пуст.</b>\nДобавьте бота в группу и выдайте права администратора."
+        if edit:
+            bot.edit_message_text(text, message.chat.id, message.message_id, parse_mode="HTML")
+        else:
+            bot.send_message(message.chat.id, text, parse_mode="HTML")
         return
 
     user_sessions[user_id]['step'] = 'clean_wait_group_id'
@@ -25,25 +29,27 @@ def handle_clean(message, bot, active_collections, test_collection, known_groups
         text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
         markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"clean_group_{c_id}"))
 
-    text += "\n👇 Или введите ID группы вручную:"
-    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+    text += "\n👇 Или отправьте ID группы (начинается с минуса):"
+    
+    if edit:
+        bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="HTML")
+    else:
+        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_clean_periods_menu(message, session, bot, edit=True):
-    chat_id = session.get('clean_chat_id')
+    name = session.get('name_group', 'Группа')
+    text = f"🧹 <b>Очистка базы данных</b>\nГруппа: <b>{name}</b>\n\nВыберите период для удаления записей:"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
-    btns = [
-        types.InlineKeyboardButton("🌅 Сегодня", callback_data="clean_choice_today"),
-        types.InlineKeyboardButton("📅 Вчера", callback_data="clean_choice_yesterday"),
-        types.InlineKeyboardButton("🗓 Неделя", callback_data="clean_choice_week"),
-        types.InlineKeyboardButton("📆 Месяц", callback_data="clean_choice_month"),
-        types.InlineKeyboardButton("♾️ Всё время", callback_data="clean_choice_all"),
-        types.InlineKeyboardButton("⌨️ Ввести даты", callback_data="clean_choice_manual")
-    ]
-    markup.add(*btns)
-    markup.add(types.InlineKeyboardButton("🔙 Назад к списку групп", callback_data="clean_back_to_groups"))
-
-    text = f"🧹 <b>Очистка истории</b>\n\nВыбрана группа: <code>{chat_id}</code>\nВыберите период:"
+    markup.add(
+        types.InlineKeyboardButton("Сегодня", callback_data="clean_period_today"),
+        types.InlineKeyboardButton("Неделя", callback_data="clean_period_week"),
+        types.InlineKeyboardButton("Месяц", callback_data="clean_period_month"),
+        types.InlineKeyboardButton("Всё время", callback_data="clean_period_all")
+    )
+    markup.add(types.InlineKeyboardButton("✍️ Ручной ввод", callback_data="clean_period_manual"))
+    
+    markup.add(types.InlineKeyboardButton("🔙 К выбору группы", callback_data="clean_back_to_groups"))
 
     if edit:
         bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="HTML")

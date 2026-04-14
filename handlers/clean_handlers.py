@@ -116,3 +116,12 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
     @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_periods')
     def handle_back_periods(call):
         show_clean_periods_menu(call, user_sessions.get(call.from_user.id, {}), bot)
+    
+    @bot.callback_query_handler(func=lambda call: call.data == "clean_back_to_groups")
+    def handle_clean_back_to_groups(call):
+        u_id = call.from_user.id
+        if u_id in user_sessions:
+            user_sessions[u_id]['step'] = 'clean_wait_group_id'
+        
+        handle_clean(call.message, bot, active_collections, test_collection, known_groups, user_sessions, edit=True)
+        bot.answer_callback_query(call.id)
