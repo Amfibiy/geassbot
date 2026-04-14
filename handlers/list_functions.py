@@ -37,14 +37,18 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
         bot.edit_message_text(text, message.message.chat.id, message.message.message_id, reply_markup=markup, parse_mode="HTML")
 
 def show_menu_periods_in_ls(message_or_call, session, bot):
+    chat = message_or_call.message.chat if hasattr(message_or_call, 'message') else message_or_call.chat
+    if chat.type != 'private':
+        return
+
     markup = types.InlineKeyboardMarkup()
     markup.row(
         types.InlineKeyboardButton("🌅 Сегодня", callback_data="list_view_today"),
         types.InlineKeyboardButton("📅 Вчера", callback_data="list_view_yesterday")
     )
     markup.row(
-        types.InlineKeyboardButton("📅 Неделя", callback_data="list_view_week"),
-        types.InlineKeyboardButton("📅 Месяц", callback_data="list_view_month")
+        types.InlineKeyboardButton("🗓 Неделя", callback_data="list_view_week"),
+        types.InlineKeyboardButton("📆 Месяц", callback_data="list_view_month")
     )
     markup.row(types.InlineKeyboardButton("♾️ Всё время", callback_data="list_view_all"))
     markup.row(types.InlineKeyboardButton("⌨️ Ввести даты вручную", callback_data="list_view_manual"))
@@ -54,13 +58,10 @@ def show_menu_periods_in_ls(message_or_call, session, bot):
     name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
     text = f"📅 <b>Выберите период для:</b>\n{name_group}"
 
-    # ИСПРАВЛЕНИЕ: всегда пытаемся редактировать, если это call или сообщение от бота
     if hasattr(message_or_call, 'message'):
-        bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
-    elif hasattr(message_or_call, 'from_user') and message_or_call.from_user.is_bot:
-        bot.edit_message_text(text, message_or_call.chat.id, message_or_call.message_id, reply_markup=markup, parse_mode="HTML")
+        bot.edit_message_text(text, chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
     else:
-        bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="HTML")
+        bot.send_message(chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, session, bot):
     records = load_history_for_chat(chat_id, float(begin_ts), float(end_ts))
