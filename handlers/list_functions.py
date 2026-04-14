@@ -54,10 +54,50 @@ def show_menu_periods_in_ls(message_or_call, session, bot):
     name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
     text = f"📅 <b>Выберите период для:</b>\n{name_group}"
 
+    # ИСПРАВЛЕНИЕ: всегда пытаемся редактировать, если это call или сообщение от бота
     if hasattr(message_or_call, 'message'):
         bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
+    elif hasattr(message_or_call, 'from_user') and message_or_call.from_user.is_bot:
+        bot.edit_message_text(text, message_or_call.chat.id, message_or_call.message_id, reply_markup=markup, parse_mode="HTML")
     else:
         bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="HTML")
+
+def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, session, bot):
+    records = load_history_for_chat(chat_id, float(begin_ts), float(end_ts))
+    
+    unique_participants = {}
+    for r in records:
+        for p in r.get('participants', []):
+            u_id = p.get('user_id')
+            if u_id and u_id not in unique_participants:
+                unique_participants[u_id] = {
+                    'name': p.get('name', 'Аноним'),
+                    'username': p.get('username')
+                }
+
+    count = len(unique_participants)
+    name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
+    
+    text = f"📊 <b>Статистика: {name_group}</b>\n"
+    text += f"📅 Период: <b>{period_name}</b>\n"
+    text += f"👥 Всего участников: <b>{count}</b>\n\n"
+
+    if count > 0:
+        text += "<b>Список участников:</b>\n"
+        for i, (u_id, info) in enumerate(unique_participants.items(), 1):
+            name = escape_html(info['name'])
+            username = f" (@{info['username']})" if info.get('username') else ""
+            text += f"{i}. {name}{username}\n"
+    else:
+        text += "<i>За этот период данных нет.</i>"
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔙 К выбору периода", callback_data="list_back_to_periods"))
+
+    if hasattr(call_or_msg, 'message'):
+        bot.edit_message_text(text, call_or_msg.message.chat.id, call_or_msg.message.message_id, reply_markup=markup, parse_mode="HTML")
+    else:
+        bot.send_message(call_or_msg.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, session, bot):
     records = load_history_for_chat(chat_id, float(begin_ts), float(end_ts))

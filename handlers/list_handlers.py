@@ -84,7 +84,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         u_id = call.from_user.id
         session = user_sessions.get(u_id)
         if session:
-            show_menu_periods_in_ls(call.message, session, bot)
+            show_menu_periods_in_ls(call, session, bot)
         bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_period_'))
@@ -96,7 +96,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         chat_id = session.get('list_chat_id')
         show_result_by_date(call, chat_id, float(data[2]), float(data[3]), data[4], session, bot)
         bot.answer_callback_query(call.id)
-        
+
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
     def handle_list_manual_date(message):
         u_id = message.from_user.id
@@ -142,7 +142,9 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
     def handle_view_choice(call):
         u_id = call.from_user.id
         session = user_sessions.get(u_id)
-        if not session: return
+        if not session: 
+            bot.answer_callback_query(call.id, "Сессия истекла")
+            return
 
         choice = call.data.replace('list_view_', '')
         chat_id = session.get('list_chat_id')
@@ -172,7 +174,8 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         elif choice == 'manual':
             session['step'] = 'list_input_date'
             bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id)
-    
+        bot.answer_callback_query(call.id)
+
     @bot.callback_query_handler(func=lambda call: call.data.startswith(('list_mview_', 'list_wview_', 'list_dview_')))
     def handle_drilldown(call):
         data = call.data.split('_', 4) 
