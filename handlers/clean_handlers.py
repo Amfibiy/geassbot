@@ -64,12 +64,13 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
             show_clean_hours_menu(call, bot, b, e, "Вчера")
         elif choice == 'week':
             b = int((now - datetime.timedelta(days=7)).timestamp())
-            show_records_for_cleaning(call, chat_id, b, int(now.timestamp()), "Неделя", bot)
+            # ИСПРАВЛЕНО: Правильный порядок аргументов
+            show_records_for_cleaning(call, bot, chat_id, b, int(now.timestamp()), "Неделя", user_sessions)
         elif choice == 'month':
             b = int((now - datetime.timedelta(days=30)).timestamp())
-            show_records_for_cleaning(call, chat_id, b, int(now.timestamp()), "Месяц", bot)
+            show_records_for_cleaning(call, bot, chat_id, b, int(now.timestamp()), "Месяц", user_sessions)
         elif choice == 'all':
-            show_records_for_cleaning(call, chat_id, 0, int(now.timestamp()), "Всё время", bot)
+            show_records_for_cleaning(call, bot, chat_id, 0, int(now.timestamp()), "Всё время", user_sessions)
         elif choice == 'manual':
             session['step'] = 'clean_input_date'
             bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id)
@@ -80,14 +81,27 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         parts = call.data.split('_')
         b, e, label = int(parts[2]), int(parts[3]), parts[4]
         chat_id = user_sessions[call.from_user.id].get('clean_chat_id')
-        show_records_for_cleaning(call, chat_id, b, e, label, bot)
+        # ИСПРАВЛЕНО: Правильный порядок аргументов
+        show_records_for_cleaning(call, bot, chat_id, b, e, label, user_sessions)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_rec_'))
     def handle_delete_specific_record(call):
         rec_id = call.data.replace('clean_rec_', '')
         if delete_history_record_by_id(rec_id):
             bot.answer_callback_query(call.id, "✅ Запись удалена")
-            show_clean_periods_menu(call, user_sessions[call.from_user.id], bot)
+            
+            # ИСПРАВЛЕНО: Обновляем список, а не выкидываем в меню периодов
+            u_id = call.from_user.id
+            session = user_sessions.get(u_id, {})
+            chat_id = session.get('clean_chat_id')
+            begin = session.get('clean_begin')
+            end = session.get('clean_end')
+            label = session.get('clean_period_name', 'Период')
+            
+            if chat_id and begin and end:
+                show_records_for_cleaning(call, bot, chat_id, begin, end, label, user_sessions)
+            else:
+                show_clean_periods_menu(call, session, bot)
         else:
             bot.answer_callback_query(call.id, "❌ Ошибка при удалении", show_alert=True)
 
@@ -101,10 +115,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
     def handle_final_yes(call):
         execute_delete(call, bot, user_sessions)
 
-    @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_groups')
-    def handle_back_groups(call):
-        handle_clean(call.message, bot, None, None, None, user_sessions, edit=True)
-
     @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_periods')
     def handle_back_periods(call):
         show_clean_periods_menu(call, user_sessions.get(call.from_user.id, {}), bot)
@@ -117,3 +127,45 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         
         handle_clean(call.message, bot, active_collections, test_collection, known_groups, user_sessions, edit=True)
         bot.answer_callback_query(call.id)
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'clean_input_date')
+    def handle_clean_manual_date(message):
+        u_id = message.from_user.id
+        session = user_sessions.get(u_id)
+        if not session:
+            bot.reply_to(message, "❌ Сессия истекла. Начните заново с /clean")
+            return
+            
+        chat_id = session.get('clean_chat_id')
+        raw = message.text.strip().replace(" ", "").replace("-", ".").replace("/", ".")
+        parts = raw.split(".")
+        if len(parts) >= 6:
+            try:
+                date_str1 = f"{parts[0]}.{parts[1]}.{parts[2]}"
+                date_str2 = f"{parts[3]}.{parts[4]}.{parts[5]}"
+                d1 = validate_date(date_str1)
+                d2 = validate_date(date_str2)
+            
+                if d1 and d2:
+                    begin = int(d1.timestamp())
+                    end = int(d2.replace(hour=23, minute=59, second=59).timestamp())
+                    p_name = f"{date_str1} — {date_str2}"
+                    
+                    # Показываем список записей за выбранный ручной период
+                    show_records_for_cleaning(message, bot, chat_id, begin, end, p_name, user_sessions)
+                    session['step'] = "clean_choice_period"
+                    return
+                else:
+                    bot.reply_to(message, "❌ Не удалось распознать даты. (Например: 13.04.26 - 14.04.26)")
+                    return
+            except Exception as e:
+                bot.reply_to(message, "❌ Произошла ошибка при обработке даты.")
+                return
+
+        error_text = (
+            "❌ <b>Неверный формат.</b>\n\n"
+            "Введите две даты слитно через точки:\n"
+            "<code>13.04.26.14.04.26</code>\n\n"
+            "Или через дефис:\n"
+            "<code>13.04.2026 - 14.04.2026</code>"
+        )
+        bot.reply_to(message, error_text, parse_mode="HTML")
