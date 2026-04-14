@@ -44,14 +44,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         user_sessions[u_id]['clean_chat_id'] = chat_id
         show_clean_periods_menu(call, user_sessions[u_id], bot)
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_group_'))
-    def handle_clean_group_selection(call):
-        chat_id = int(call.data.replace('clean_group_', ''))
-        u_id = call.from_user.id
-        user_sessions[u_id]['clean_chat_id'] = chat_id
-        user_sessions[u_id]['step'] = 'clean_choice_period'
-        show_clean_periods_menu(call.message, user_sessions[u_id], bot, edit=True)
-
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_view_'))
     def handle_clean_view(call):
         u_id = call.from_user.id
@@ -111,7 +103,7 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
 
     @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_groups')
     def handle_back_groups(call):
-        handle_clean(call.message, bot, None, None, None, user_sessions)
+        handle_clean(call.message, bot, None, None, None, user_sessions, edit=True)
 
     @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_periods')
     def handle_back_periods(call):

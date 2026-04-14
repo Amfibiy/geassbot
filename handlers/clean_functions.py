@@ -36,25 +36,31 @@ def handle_clean(message, bot, active_collections, test_collection, known_groups
     else:
         bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
-def show_clean_periods_menu(message, session, bot, edit=True):
+def show_clean_periods_menu(message_or_call, session, bot, edit=True):
+    if hasattr(message_or_call, 'message'):
+        chat_id = message_or_call.message.chat.id
+        msg_id = message_or_call.message.message_id
+    else:
+        chat_id = message_or_call.chat.id
+        msg_id = message_or_call.message_id
+
     name = session.get('name_group', 'Группа')
     text = f"🧹 <b>Очистка базы данных</b>\nГруппа: <b>{name}</b>\n\nВыберите период для удаления записей:"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("Сегодня", callback_data="clean_period_today"),
-        types.InlineKeyboardButton("Неделя", callback_data="clean_period_week"),
-        types.InlineKeyboardButton("Месяц", callback_data="clean_period_month"),
-        types.InlineKeyboardButton("Всё время", callback_data="clean_period_all")
+        types.InlineKeyboardButton("Сегодня", callback_data="clean_view_today"), # Исправлено на view_
+        types.InlineKeyboardButton("Неделя", callback_data="clean_view_week"),
+        types.InlineKeyboardButton("Месяц", callback_data="clean_view_month"),
+        types.InlineKeyboardButton("Всё время", callback_data="clean_view_all")
     )
-    markup.add(types.InlineKeyboardButton("✍️ Ручной ввод", callback_data="clean_period_manual"))
-    
+    markup.add(types.InlineKeyboardButton("✍️ Ручной ввод", callback_data="clean_view_manual"))
     markup.add(types.InlineKeyboardButton("🔙 К выбору группы", callback_data="clean_back_to_groups"))
 
     if edit:
-        bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="HTML")
+        bot.edit_message_text(text, chat_id, msg_id, reply_markup=markup, parse_mode="HTML")
     else:
-        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_clean_hours_menu(call, bot, begin_ts, end_ts, day_label):
     markup = types.InlineKeyboardMarkup(row_width=3)
