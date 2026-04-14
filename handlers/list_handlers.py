@@ -148,7 +148,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
 
         choice = call.data.replace('list_view_', '')
         chat_id = session.get('list_chat_id')
-        now_dt = datetime.datetime.utcnow()
+        now_dt = datetime.datetime.now()
 
         if choice == 'today':
             b = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -158,12 +158,11 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
             b = (now_dt - datetime.timedelta(days=6)).replace(hour=0, minute=0, second=0).timestamp()
             e = now_dt.timestamp()
             show_days_of_week_menu(call, bot, b, e, "Последние 7 дней")
+            
         elif choice == 'month':
             f_day = now_dt.replace(day=1, hour=0, minute=0, second=0)
-            if f_day.month == 12: 
-                n_m = f_day.replace(year=f_day.year+1, month=1)
-            else: 
-                n_m = f_day.replace(month=f_day.month+1)
+            if f_day.month == 12: n_m = f_day.replace(year=f_day.year+1, month=1)
+            else: n_m = f_day.replace(month=f_day.month+1)
             l_day = n_m - datetime.timedelta(seconds=1)
             show_weeks_of_month_menu(call, bot, f_day.timestamp(), l_day.timestamp(), f_day.strftime("%m.%Y"))
         elif choice == 'yesterday':
@@ -172,10 +171,11 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
             e = yest.replace(hour=23, minute=59, second=59, microsecond=0).timestamp()
             show_result_by_date(call, chat_id, b, e, "Вчера", session, bot)
         elif choice == 'all':
-            show_all_time_menu(call, session, bot)
+            show_all_time_menu(call, session, bot)    
         elif choice == 'manual':
             session['step'] = 'list_input_date'
             bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id)
+        
         bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith(('list_mview_', 'list_wview_', 'list_dview_')))
