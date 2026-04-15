@@ -8,7 +8,7 @@ import os
 from flask import Flask
 from config.commands_setup import setup_bot_menu
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database.mongo import save_known_group
+from database.mongo import save_known_group,save_user_id
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
@@ -111,13 +111,17 @@ def handle_reaction(reaction):
     chat_id = reaction.chat.id
     chat_title = reaction.chat.title or f"Group {chat_id}"
     save_known_group(chat_id, chat_title)
+    if reaction.user:
+        save_user_id(chat_id, reaction.user.id, reaction.user.username)
 
 @bot.message_handler(
     func=lambda m: m.chat.type in ['group', 'supergroup'] and (m.text is None or not m.text.startswith('/')), 
-    content_types=['text', 'photo', 'video', 'document', 'sticker', 'voice']
+    content_types=['text', 'photo', 'video', 'document', 'sticker', 'voice', 'video_note']
 )
-def silent_group_registration(message):
+def silent_registration(message):
     save_known_group(message.chat.id, message.chat.title)
+    save_user_id(message.chat.id, message.from_user.id, message.from_user.username)
+    
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
