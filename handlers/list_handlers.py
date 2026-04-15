@@ -85,7 +85,10 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         u_id = call.from_user.id
         session = user_sessions.get(u_id)
         if session:
+            session['step'] = 'list_choice_period'  
             show_menu_periods_in_ls(call, session, bot)
+        else:
+            bot.answer_callback_query(call.id, "Сессия истекла", show_alert=True)
         bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_period_'))
@@ -95,13 +98,11 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         if not session: return
         data = call.data.split('_', 4)
         chat_id = session.get('list_chat_id')
-        
-        # Получаем callback меню, из которого перешли, для поэтапного возврата
         back_cb = session.get('list_last_menu_cb', 'list_back_to_periods')
         show_result_by_date(call, chat_id, float(data[2]), float(data[3]), data[4], session, bot, back_cb=back_cb)
         bot.answer_callback_query(call.id)
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and not m.text.startswith('/') and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
     def handle_list_manual_date(message):
         u_id = message.from_user.id
         if u_id not in user_sessions:
@@ -154,7 +155,6 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         chat_id = session.get('list_chat_id')
         now_dt = datetime.datetime.now()
 
-        # Сбрасываем историю родителей при начале нового пути
         session['list_parent_mview'] = 'list_back_to_periods'
         session['list_parent_wview'] = 'list_back_to_periods'
 
