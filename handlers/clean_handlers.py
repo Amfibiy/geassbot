@@ -103,17 +103,15 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
             bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id, reply_markup=markup)
         
         bot.answer_callback_query(call.id)
-
     @bot.callback_query_handler(func=lambda call: call.data == "clean_back_to_periods")
     def handle_back_to_periods_clean(call):
         u_id = call.from_user.id
         session = user_sessions.get(u_id)
         if session:
             session['step'] = 'clean_choice_period' 
-            chat_id = session.get('clean_chat_id')
-            group_name = session.get('name_group') or "Группа"
-            if chat_id:
-                show_clean_periods_menu(call, bot, chat_id, group_name)
+            show_clean_periods_menu(call, session, bot)
+        else:
+            bot.answer_callback_query(call.id, "Сессия истекла", show_alert=True)
         bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_period_'))
