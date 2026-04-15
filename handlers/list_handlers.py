@@ -95,7 +95,10 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         if not session: return
         data = call.data.split('_', 4)
         chat_id = session.get('list_chat_id')
-        show_result_by_date(call, chat_id, float(data[2]), float(data[3]), data[4], session, bot)
+        
+        # Получаем callback меню, из которого перешли, для поэтапного возврата
+        back_cb = session.get('list_last_menu_cb', 'list_back_to_periods')
+        show_result_by_date(call, chat_id, float(data[2]), float(data[3]), data[4], session, bot, back_cb=back_cb)
         bot.answer_callback_query(call.id)
 
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
@@ -119,7 +122,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                     begin = d1.timestamp()
                     end = d2.replace(hour=23, minute=59, second=59).timestamp()
                     p_name = f"{date_str1} — {date_str2}"
-                    show_result_by_date(message, chat_id, begin, end, p_name, session, bot)
+                    show_result_by_date(message, chat_id, begin, end, p_name, session, bot, back_cb="list_back_to_periods")
                     session['step'] = "list_choice_period"
                     return
                 else:
@@ -151,31 +154,41 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         chat_id = session.get('list_chat_id')
         now_dt = datetime.datetime.now()
 
+        # Сбрасываем историю родителей при начале нового пути
+        session['list_parent_mview'] = 'list_back_to_periods'
+        session['list_parent_wview'] = 'list_back_to_periods'
+
         if choice == 'today':
+            session['list_last_menu_cb'] = call.data
             b = int(now_dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
             e = int(now_dt.timestamp())
-            show_hours_of_day_menu(call, bot, b, e, "Сегодня")
+            show_hours_of_day_menu(call, bot, b, e, "Сегодня", back_cb="list_back_to_periods")
             
         elif choice == 'week':
-            # Использование int() решает проблему 64 байт
+            session['list_parent_wview'] = call.data
+            session['list_last_menu_cb'] = call.data
             b = int((now_dt - datetime.timedelta(days=6)).replace(hour=0, minute=0, second=0).timestamp())
             e = int(now_dt.timestamp())
-            show_days_of_week_menu(call, bot, b, e, "7 дней")
+            show_days_of_week_menu(call, bot, b, e, "7 дней", back_cb="list_back_to_periods")
             
         elif choice == 'month':
-            f_day = now_dt.replace(day=1, hour=0, minute=0, second=0)
+            session['list_parent_mview'] = call.data
+            session['list_last_menu_cb'] = call.data
+            f_day = now_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             if f_day.month == 12: n_m = f_day.replace(year=f_day.year+1, month=1)
             else: n_m = f_day.replace(month=f_day.month+1)
             l_day = n_m - datetime.timedelta(seconds=1)
-            show_weeks_of_month_menu(call, bot, int(f_day.timestamp()), int(l_day.timestamp()), f_day.strftime("%m.%Y"))
+            show_weeks_of_month_menu(call, bot, int(f_day.timestamp()), int(l_day.timestamp()), f_day.strftime("%m.%Y"), back_cb="list_back_to_periods")
             
         elif choice == 'yesterday':
+            session['list_last_menu_cb'] = call.data
             yest = now_dt - datetime.timedelta(days=1)
             b = int(yest.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
             e = int(yest.replace(hour=23, minute=59, second=59, microsecond=0).timestamp())
-            show_result_by_date(call, chat_id, b, e, "Вчера", session, bot)
+            show_hours_of_day_menu(call, bot, b, e, "Вчера", back_cb="list_back_to_periods")
             
         elif choice == 'all':
+            session['list_last_menu_cb'] = call.data
             show_all_time_menu(call, session, bot)    
             
         elif choice == 'manual':
@@ -186,25 +199,24 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         
         bot.answer_callback_query(call.id)
 
-    @bot.callback_query_handler(func=lambda call: call.data == "list_back_to_periods")
-    def handle_back_to_periods(call):
-        u_id = call.from_user.id
-        session = user_sessions.get(u_id)
-        if session:
-            session['step'] = 'choice_period'
-            show_menu_periods_in_ls(call, session, bot)
-        bot.answer_callback_query(call.id)
-        
     @bot.callback_query_handler(func=lambda call: call.data.startswith(('list_mview_', 'list_wview_', 'list_dview_')))
     def handle_drilldown(call):
+        u_id = call.from_user.id
+        session = user_sessions.get(u_id, {})
         data = call.data.split('_', 4) 
         v_type, b_ts, e_ts, label = data[1], data[2], data[3], data[4]
         
+        session['list_last_menu_cb'] = call.data
+        
         if v_type == 'mview':
-            show_weeks_of_month_menu(call, bot, b_ts, e_ts, label)
+            session['list_parent_mview'] = call.data
+            show_weeks_of_month_menu(call, bot, b_ts, e_ts, label, back_cb="list_view_all")
         elif v_type == 'wview':
-            show_days_of_week_menu(call, bot, b_ts, e_ts, label)
+            session['list_parent_wview'] = call.data
+            back_cb = session.get('list_parent_mview', 'list_back_to_periods')
+            show_days_of_week_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
         elif v_type == 'dview':
-            show_hours_of_day_menu(call, bot, b_ts, e_ts, label)
+            back_cb = session.get('list_parent_wview', 'list_back_to_periods')
+            show_hours_of_day_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
+            
         bot.answer_callback_query(call.id)
-    

@@ -87,7 +87,7 @@ def show_clean_all_time_menu(call, session, bot):
     markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
     bot.edit_message_text("📂 <b>Архив по месяцам (очистка):</b>", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
-def show_clean_weeks_menu(call, bot, begin_ts, end_ts, month_label):
+def show_clean_weeks_menu(call, bot, begin_ts, end_ts, month_label, back_cb="clean_back_to_periods"):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton(f"🗑 Весь месяц ({month_label})", callback_data=f"clean_period_{begin_ts}_{end_ts}_Месяц {month_label}"))
     
@@ -104,10 +104,10 @@ def show_clean_weeks_menu(call, bot, begin_ts, end_ts, month_label):
         curr = w_end + datetime.timedelta(seconds=1)
         w_idx += 1
 
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
     bot.edit_message_text(f"📍 Очистка за месяц: <b>{month_label}</b>", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
-def show_clean_days_menu(call, bot, begin_ts, end_ts, week_label):
+def show_clean_days_menu(call, bot, begin_ts, end_ts, week_label, back_cb="clean_back_to_periods"):
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(types.InlineKeyboardButton(f"🗑 Вся неделя ({week_label})", callback_data=f"clean_period_{begin_ts}_{end_ts}_Неделя {week_label}"))
     
@@ -122,10 +122,10 @@ def show_clean_days_menu(call, bot, begin_ts, end_ts, week_label):
         curr += datetime.timedelta(days=1)
     
     markup.add(*btns)
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
     bot.edit_message_text(f"📅 Дни недели (<b>{week_label}</b>):", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
-def show_clean_hours_menu(call, bot, begin_ts, end_ts, day_label):
+def show_clean_hours_menu(call, bot, begin_ts, end_ts, day_label, back_cb="clean_back_to_periods"):
     markup = types.InlineKeyboardMarkup(row_width=3)
     markup.add(types.InlineKeyboardButton(f"🗑 Весь день ({day_label})", callback_data=f"clean_period_{begin_ts}_{end_ts}_{day_label}"))
     
@@ -139,10 +139,10 @@ def show_clean_hours_menu(call, bot, begin_ts, end_ts, day_label):
         btns.append(types.InlineKeyboardButton(tr, callback_data=f"clean_period_{int(h_start.timestamp())}_{int(h_end.timestamp())}_{day_label} {tr}"))
     
     markup.add(*btns)
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
     bot.edit_message_text(f"🕒 Время за <b>{day_label}</b>:", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
-def show_records_for_cleaning(call_or_msg, bot, chat_id, begin, end, label, user_sessions):
+def show_records_for_cleaning(call_or_msg, bot, chat_id, begin, end, label, user_sessions, back_cb="clean_back_to_periods"):
     user_id = call_or_msg.from_user.id
     if user_id not in user_sessions:
         user_sessions[user_id] = {}
@@ -161,7 +161,7 @@ def show_records_for_cleaning(call_or_msg, bot, chat_id, begin, end, label, user
     
     if not records:
         text = f"📭 В периоде <b>{label}</b> записей не найдено."
-        markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
+        markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
     else:
         text = f"🗑 <b>Удаление записей ({label}):</b>\n\nВыберите запись или удалите всё разом."
         
@@ -172,7 +172,7 @@ def show_records_for_cleaning(call_or_msg, bot, chat_id, begin, end, label, user
             markup.add(types.InlineKeyboardButton(f"🕒 {dt} — {count} чел. [УДАЛИТЬ ❌]", callback_data=f"clean_rec_{r_id}"))
 
         markup.add(types.InlineKeyboardButton(f"🔥 УДАЛИТЬ ВСЕ ЗА {label}", callback_data=f"clean_bulk_{begin}_{end}"))
-        markup.add(types.InlineKeyboardButton("🔙 К выбору периода", callback_data="clean_back_to_periods"))
+        markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
 
     cid = call_or_msg.message.chat.id if hasattr(call_or_msg, 'message') else call_or_msg.chat.id
     mid = call_or_msg.message.message_id if hasattr(call_or_msg, 'message') else None
@@ -182,13 +182,13 @@ def show_records_for_cleaning(call_or_msg, bot, chat_id, begin, end, label, user
     else:
         bot.send_message(cid, text, reply_markup=markup, parse_mode="HTML")
 
-def ask_confirm_clean(call, chat_id, begin, end, period_name, session, bot):
+def ask_confirm_clean(call, chat_id, begin, end, period_name, session, bot, back_cb="clean_back_to_periods"):
     session.update({'clean_begin': begin, 'clean_end': end, 'clean_period_name': period_name})
     text = f"⚠️ <b>ПОДТВЕРЖДЕНИЕ</b>\n\nВы уверены, что хотите навсегда удалить ВСЕ записи за <b>{period_name}</b> для группы <code>{chat_id}</code>?"
     markup = types.InlineKeyboardMarkup()
     markup.add(
         types.InlineKeyboardButton("✅ ДА, УДАЛИТЬ", callback_data="clean_confirm_yes"),
-        types.InlineKeyboardButton("❌ ОТМЕНА", callback_data="clean_back_to_periods")
+        types.InlineKeyboardButton("❌ ОТМЕНА", callback_data=back_cb)
     )
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 

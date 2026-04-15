@@ -63,7 +63,7 @@ def show_menu_periods_in_ls(message_or_call, session, bot):
     else:
         bot.send_message(chat.id, text, reply_markup=markup, parse_mode="HTML")
 
-def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, session, bot):
+def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, session, bot, back_cb="list_back_to_periods"):
     records = load_history_for_chat(chat_id, float(begin_ts), float(end_ts))
     
     unique_participants = {}
@@ -93,7 +93,7 @@ def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, ses
         text += "<i>За этот период данных нет.</i>"
 
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 К выбору периода", callback_data="list_back_to_periods"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
 
     cid = call_or_msg.message.chat.id if hasattr(call_or_msg, 'message') else call_or_msg.chat.id
     mid = call_or_msg.message.message_id if hasattr(call_or_msg, 'message') else None
@@ -125,7 +125,7 @@ def show_all_time_menu(call, session, bot):
     markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
     bot.edit_message_text("📂 <b>Архив по месяцам:</b>", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
     
-def show_weeks_of_month_menu(call, bot, begin_ts, end_ts, month_label):
+def show_weeks_of_month_menu(call, bot, begin_ts, end_ts, month_label, back_cb="list_back_to_periods"):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton(f"📊 Весь месяц ({month_label})", callback_data=f"list_period_{begin_ts}_{end_ts}_Месяц {month_label}"))
     
@@ -142,10 +142,10 @@ def show_weeks_of_month_menu(call, bot, begin_ts, end_ts, month_label):
         curr = w_end + datetime.timedelta(seconds=1)
         w_idx += 1
         
-    markup.add(types.InlineKeyboardButton("🔙 К меню периодов", callback_data="list_back_to_periods"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
     bot.edit_message_text(f"📍 Месяц: <b>{month_label}</b>", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
-def show_days_of_week_menu(call, bot, begin_ts, end_ts, week_label):
+def show_days_of_week_menu(call, bot, begin_ts, end_ts, week_label, back_cb="list_back_to_periods"):
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(types.InlineKeyboardButton(f"📊 Вся неделя ({week_label})", callback_data=f"list_period_{begin_ts}_{end_ts}_Неделя {week_label}"))
     
@@ -160,10 +160,10 @@ def show_days_of_week_menu(call, bot, begin_ts, end_ts, week_label):
         curr += datetime.timedelta(days=1)
     
     markup.add(*btns)
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
     bot.edit_message_text(f"📅 Дни недели (<b>{week_label}</b>):", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
-def show_hours_of_day_menu(call, bot, begin_ts, end_ts, day_label):
+def show_hours_of_day_menu(call, bot, begin_ts, end_ts, day_label, back_cb="list_back_to_periods"):
     markup = types.InlineKeyboardMarkup(row_width=3)
     markup.add(types.InlineKeyboardButton(f"📊 Весь день ({day_label})", callback_data=f"list_period_{begin_ts}_{end_ts}_{day_label}"))
     
@@ -177,5 +177,5 @@ def show_hours_of_day_menu(call, bot, begin_ts, end_ts, day_label):
         btns.append(types.InlineKeyboardButton(tr, callback_data=f"list_period_{int(h_start.timestamp())}_{int(h_end.timestamp())}_{day_label} {tr}"))
     
     markup.add(*btns)
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
     bot.edit_message_text(f"🕒 Время за <b>{day_label}</b>:", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
