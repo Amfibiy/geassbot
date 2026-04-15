@@ -193,10 +193,3 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
     def handle_back_groups(call):
         handle_clean(call.message, bot, user_sessions, edit=True)
     
-    @bot.callback_query_handler(func=lambda call: call.data == "clean_back_to_all_time")
-    def handle_back_to_all_time_clean(call):
-        u_id = call.from_user.id
-        session = user_sessions.get(u_id)
-        if session:
-            show_clean_all_time_menu(call, bot, session.get('clean_chat_id'), session.get('name_group', 'Группа'))
-        bot.answer_callback_query(call.id)
