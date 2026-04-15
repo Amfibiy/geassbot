@@ -104,7 +104,7 @@ def show_clean_weeks_menu(call, bot, begin_ts, end_ts, month_label):
         curr = w_end + datetime.timedelta(seconds=1)
         w_idx += 1
         
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_view_all"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
     bot.edit_message_text(f"📍 Очистка за месяц: <b>{month_label}</b>", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
 def show_clean_days_menu(call, bot, begin_ts, end_ts, week_label):
@@ -122,7 +122,7 @@ def show_clean_days_menu(call, bot, begin_ts, end_ts, week_label):
         curr += datetime.timedelta(days=1)
     
     markup.add(*btns)
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_view_all"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
     bot.edit_message_text(f"📅 Дни недели (<b>{week_label}</b>):", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
 def show_clean_hours_menu(call, bot, begin_ts, end_ts, day_label):
@@ -139,7 +139,7 @@ def show_clean_hours_menu(call, bot, begin_ts, end_ts, day_label):
         btns.append(types.InlineKeyboardButton(tr, callback_data=f"clean_period_{int(h_start.timestamp())}_{int(h_end.timestamp())}_{day_label} {tr}"))
     
     markup.add(*btns)
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
+    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_all_time"))
     bot.edit_message_text(f"🕒 Время за <b>{day_label}</b>:", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
 def show_records_for_cleaning(call_or_msg, bot, chat_id, begin, end, label, user_sessions):

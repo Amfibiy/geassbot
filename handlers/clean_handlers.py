@@ -65,7 +65,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         choice = call.data.replace('clean_view_', '')
         chat_id = session.get('clean_chat_id')
         
-        # Исправлено: использование timezone-aware объектов
         now_dt = datetime.datetime.now(datetime.timezone.utc)
         today_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -105,14 +104,16 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         
         bot.answer_callback_query(call.id)
 
-    # ОБРАБОТЧИК: Для четкого возврата в меню периодов
     @bot.callback_query_handler(func=lambda call: call.data == "clean_back_to_periods")
-    def handle_back_periods(call):
+    def handle_back_to_periods_clean(call):
         u_id = call.from_user.id
         session = user_sessions.get(u_id)
         if session:
-            session['step'] = 'clean_choice_period'
-            show_clean_periods_menu(call, session, bot)
+            session['step'] = 'clean_choice_period' 
+            chat_id = session.get('clean_chat_id')
+            group_name = session.get('name_group') or "Группа"
+            if chat_id:
+                show_clean_periods_menu(call, bot, chat_id, group_name)
         bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_period_'))
@@ -191,3 +192,11 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
     @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_groups')
     def handle_back_groups(call):
         handle_clean(call.message, bot, user_sessions, edit=True)
+    
+    @bot.callback_query_handler(func=lambda call: call.data == "clean_back_to_all_time")
+    def handle_back_to_all_time_clean(call):
+        u_id = call.from_user.id
+        session = user_sessions.get(u_id)
+        if session:
+            show_clean_all_time_menu(call, bot, session.get('clean_chat_id'), session.get('name_group', 'Группа'))
+        bot.answer_callback_query(call.id)
