@@ -23,7 +23,7 @@ def handle_clean(message, bot, user_sessions, edit=False):
         return
 
     user_sessions[user_id]['step'] = 'clean_wait_group_id'
-    text = "🧹 <b>Выберите группу для очистки:</b>\n\n"
+    text = "🧹 <b>Выберите группу для очистки:</b>\n<i>Нажмите на кнопку или отправьте ID группы текстом.</i>\n\n"
     markup = types.InlineKeyboardMarkup()
     
     for i, g in enumerate(admin_groups, 1):

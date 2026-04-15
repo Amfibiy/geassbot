@@ -1,7 +1,7 @@
 import datetime
+from telebot import types
 from database.mongo import get_group_by_id, delete_history_record_by_id
 from utils.validators import validate_date
-from telebot import types
 from .clean_functions import (
     handle_clean, show_clean_periods_menu, show_clean_all_time_menu,
     show_clean_weeks_menu, show_clean_days_menu, show_clean_hours_menu,
@@ -15,6 +15,25 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         if message.chat.type == 'private':
             handle_clean(message, bot, user_sessions)
 
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'clean_wait_group_id')
+    def handle_text_group_id(message):
+        u_id = message.from_user.id
+        group_id = message.text.strip()
+        
+        if u_id not in user_sessions: 
+            user_sessions[u_id] = {}
+            
+        group = get_group_by_id(group_id)
+        name_group = group['title'] if group else f"Группа {group_id}"
+        
+        user_sessions[u_id].update({
+            'clean_chat_id': group_id, 
+            'name_group': name_group, 
+            'step': 'clean_choice_period'
+        })
+        
+        show_clean_periods_menu(message, user_sessions[u_id], bot)
+
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_group_'))
     def handle_clean_group_choice(call):
         chat_id = call.data.replace('clean_group_', '')
@@ -23,7 +42,9 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         group = get_group_by_id(chat_id)
         name_group = group['title'] if group else f"Группа {chat_id}"
         
-        if user_id not in user_sessions: user_sessions[user_id] = {}
+        if user_id not in user_sessions: 
+            user_sessions[user_id] = {}
+            
         user_sessions[user_id].update({
             'clean_chat_id': chat_id, 
             'name_group': name_group, 
@@ -43,29 +64,34 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
 
         choice = call.data.replace('clean_view_', '')
         chat_id = session.get('clean_chat_id')
-        now_dt = datetime.datetime.now()
+        
+        # Исправлено: использование timezone-aware объектов
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        today_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
         if choice == 'today':
-            b = int(now_dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+            b = int(today_start.timestamp())
             e = int(now_dt.timestamp())
             show_clean_hours_menu(call, bot, b, e, "Сегодня")
             
         elif choice == 'week':
-            b = int((now_dt - datetime.timedelta(days=6)).replace(hour=0, minute=0, second=0).timestamp())
+            b = int((now_dt - datetime.timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
             e = int(now_dt.timestamp())
             show_clean_days_menu(call, bot, b, e, "7 дней")
             
         elif choice == 'month':
-            f_day = now_dt.replace(day=1, hour=0, minute=0, second=0)
-            if f_day.month == 12: n_m = f_day.replace(year=f_day.year+1, month=1)
-            else: n_m = f_day.replace(month=f_day.month+1)
+            f_day = now_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if f_day.month == 12: 
+                n_m = f_day.replace(year=f_day.year+1, month=1)
+            else: 
+                n_m = f_day.replace(month=f_day.month+1)
             l_day = n_m - datetime.timedelta(seconds=1)
             show_clean_weeks_menu(call, bot, int(f_day.timestamp()), int(l_day.timestamp()), f_day.strftime("%m.%Y"))
             
         elif choice == 'yesterday':
-            yest = now_dt - datetime.timedelta(days=1)
-            b = int(yest.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-            e = int(yest.replace(hour=23, minute=59, second=59, microsecond=0).timestamp())
+            yesterday = today_start - datetime.timedelta(days=1)
+            b = int(yesterday.timestamp())
+            e = int(today_start.timestamp()) - 1
             show_records_for_cleaning(call, bot, chat_id, b, e, "Вчера", user_sessions)
             
         elif choice == 'all':
@@ -77,6 +103,16 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
             markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
             bot.edit_message_text("✍️ Введите период (ДД.ММ.ГГ - ДД.ММ.ГГ):", call.message.chat.id, call.message.message_id, reply_markup=markup)
         
+        bot.answer_callback_query(call.id)
+
+    # ОБРАБОТЧИК: Для четкого возврата в меню периодов
+    @bot.callback_query_handler(func=lambda call: call.data == "clean_back_to_periods")
+    def handle_back_periods(call):
+        u_id = call.from_user.id
+        session = user_sessions.get(u_id)
+        if session:
+            session['step'] = 'clean_choice_period'
+            show_clean_periods_menu(call, session, bot)
         bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_period_'))
@@ -155,11 +191,3 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
     @bot.callback_query_handler(func=lambda call: call.data == 'clean_back_to_groups')
     def handle_back_groups(call):
         handle_clean(call.message, bot, user_sessions, edit=True)
-
-    @bot.callback_query_handler(func=lambda call: call.data == "clean_back_to_periods")
-    def handle_back_periods(call):
-        u_id = call.from_user.id
-        session = user_sessions.get(u_id)
-        if session:
-            show_clean_periods_menu(call, session, bot)
-        bot.answer_callback_query(call.id)
