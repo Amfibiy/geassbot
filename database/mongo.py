@@ -8,6 +8,9 @@ db = client['telegram_bot_db']
 history_col = db['collection_history']
 groups_col = db['registered_groups']
 members_col = db['chat_members']
+settings_col = db['group_settings']
+admin_prefs_col = db['admin_preferences']
+
 
 def save_known_group(chat_id, title):
     c_id = int(chat_id)
@@ -97,21 +100,27 @@ def save_user_id(chat_id, user_id, username, first_name=None):
 
     return existing_user is None
 
-def add_user_by_username(chat_id, username):
-    c_id = int(chat_id)
-    clean_username = username.replace('@', '')
-    
-    existing = members_col.find_one({'chat_id': c_id, 'username': clean_username})
-    if existing:
-        return False
-        
-    members_col.insert_one({
-        'chat_id': c_id,
-        'user_id': None,
-        'username': clean_username,
-        'last_seen': datetime.datetime.now()
-    })
-    return True
+def update_group_duration(chat_id, duration_min):
+    settings_col.update_one(
+        {'chat_id': int(chat_id)},
+        {'$set': {'default_duration': int(duration_min) * 60}},
+        upsert=True
+    )
+
+def update_admin_timezone(admin_id, tz_string):
+    admin_prefs_col.update_one(
+        {'admin_id': int(admin_id)},
+        {'$set': {'timezone': tz_string}},
+        upsert=True
+    )
+
+def get_combined_settings(chat_id, admin_id):
+    g_set = settings_col.find_one({'chat_id': int(chat_id)}) or {}
+    a_set = admin_prefs_col.find_one({'admin_id': int(admin_id)}) or {}
+    return {
+        'duration': g_set.get('default_duration', 1800),
+        'timezone': a_set.get('timezone', 'МСК')
+    }
 
 def get_all_members_ids(chat_id):
     members = members_col.find({'chat_id': int(chat_id)})

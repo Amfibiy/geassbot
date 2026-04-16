@@ -173,25 +173,25 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         )
         
     @bot.callback_query_handler(func=lambda call: call.data.startswith(('clean_mview_', 'clean_wview_', 'clean_dview_')))
-    def handle_clean_drilldown(call):
+    def handle_drilldown(call):
         u_id = call.from_user.id
         session = user_sessions.get(u_id, {})
         data = call.data.split('_', 4)
-        v_type, b, e, label = data[1], data[2], data[3], data[4]
+        v_type, b_ts, e_ts, label = data[1], data[2], data[3], data[4]
         
         session['clean_last_menu_cb'] = call.data
         
-        if v_type == 'mview': 
+        if v_type == 'mview':
             session['clean_parent_mview'] = call.data
-            show_clean_weeks_menu(call, bot, b, e, label, back_cb="clean_view_all")
-        elif v_type == 'wview': 
+            show_clean_weeks_menu(call, bot, b_ts, e_ts, label, back_cb="clean_view_all_time")
+        elif v_type == 'wview':
             session['clean_parent_wview'] = call.data
-            back_cb = session.get('clean_parent_mview', 'clean_back_to_periods')
-            show_clean_days_menu(call, bot, b, e, label, back_cb=back_cb)
-        elif v_type == 'dview': 
-            back_cb = session.get('clean_parent_wview', 'clean_back_to_periods')
-            show_clean_hours_menu(call, bot, b, e, label, back_cb=back_cb)
-            
+            back_cb = session.get('clean_parent_mview', "clean_view_all_time")
+            show_clean_days_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
+        elif v_type == 'dview':
+            back_cb = session.get('clean_parent_wview', "clean_view_all_time")
+            chat_id = session.get('clean_chat_id')
+            show_clean_hours_menu(call, bot, b_ts, e_ts, label, chat_id, u_id, back_cb=back_cb)
         bot.answer_callback_query(call.id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clean_rec_'))

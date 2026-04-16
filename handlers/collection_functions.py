@@ -1,76 +1,53 @@
 import time
+import random
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config.settings import COLLECTION_DURATION
-from database.mongo import save_history_record, get_all_members_ids
+from database.mongo import save_history_record, get_all_members_ids,get_combined_settings
 from utils.messages import START_MESSAGES, TEST_START_MSG, COLLECT_ALREADY_RUNNING
 
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
-    
+    admin_id = message.from_user.id
+    configs = get_combined_settings(chat_id, admin_id)
+    current_limit = configs['duration']
+    limit_min = current_limit // 60
+
     if chat_id in collection_dict:
         col = collection_dict[chat_id]
         elapsed = int(time.time() - col['start_time'])
-        minutes_pass = elapsed // 60
-        rem = max(0, COLLECTION_DURATION - elapsed)
+        rem = max(0, col['duration'] - elapsed)
         
-        status_text = f"""⚠️ *Активный сбор уже идёт!*
-
-📊 *Текущий статус:*
-👥 Участников: {len(col['participants'])}
-⏱️ Прошло времени: {minutes_pass} мин
-⏰ Осталось: {rem // 60:02d}:{rem % 60:02d}
-
-💡 *Команды для управления:*
-/list - Статистика сбора
-/stop - Завершить сбор досрочно
-
-❌ *Новый сбор можно запустить только после завершения текущего.*"""
-        
-        bot.reply_to(message, status_text, parse_mode="Markdown")
+        status_text = COLLECT_ALREADY_RUNNING.format(
+            count=len(col['participants']),
+            elapsed=elapsed // 60,
+            remaining=f"{rem // 60:02d}:{rem % 60:02d}"
+        )
+        bot.reply_to(message, status_text, parse_mode="HTML")
         return
-
     member_ids = get_all_members_ids(chat_id)
-    # Твои невидимые теги для упоминания всех
-    tags = [f'<a href="tg://user?id={m_id}">\u200b</a>' for m_id in member_ids]
-    mention_text = "".join(tags)
+    admin_username = message.from_user.username or message.from_user.first_name
+
+    limit_min = current_limit // 60
 
     if is_test:
-        msgs = [
-            f"{mention_text}🧪 *ТЕСТОВЫЙ СБОР*\n\n⏰ 30 минут\n👇 Нажмите для теста"
-        ]
+        text = TEST_START_MSG.format(admin=admin_username).replace("30 минут", f"{limit_min} минут")
     else:
-        # Твои 4 сообщения при старте
-        msgs = [
-            f"{mention_text}🚨 *ВНИМАНИЕ!* 🚨\n\n🎯 *Начинается сбор участников!*\n⏰ Длительность: 30 минут\n👇 Присоединяйтесь по кнопке ниже",
-            f"{mention_text}🎮 *Готовы к сбору?* 🎮\n\n🏃‍♂️ Не откладывайте на потом!\n🔥 Присоединяйтесь сейчас!",
-            f"{mention_text}🌟 *Не пропустите!* 🌟\n\n⏱️ Время ограничено!\n👥 Соберитесь вместе!",
-            f"{mention_text}💥 *Последний звонок!* 💥\n\n✅ Успейте присоединиться!\n🎁 Возможность для всех!"
-        ]
-
-    for m_text in msgs:
-        bot.send_message(chat_id, m_text, parse_mode="HTML")
-        time.sleep(0.5)
+        raw_text = random.choice(START_MESSAGES)
+        text = raw_text.replace("30 минут", f"{limit_min} минут")
 
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
-    
-    main_text = f"""📊 *Счётчики:*
-Пока никто не присоединился...
-⏰ Осталось времени: 30:00
+    markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
 
-👇 Нажмите кнопку чтобы присоединиться"""
+    sent_msg = bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
 
-    main_msg = bot.send_message(chat_id, main_text, reply_markup=markup, parse_mode="Markdown")
-    
-    # Сюда добавили chat_id и is_test для связи с БД
     collection_dict[chat_id] = {
-        'chat_id': chat_id,
-        'is_test': is_test,
+        'main_message_id': sent_msg.message_id,
         'start_time': time.time(),
-        'main_message_id': main_msg.message_id,
+        'duration': current_limit, #
         'participants': [],
+        'all_known_ids': member_ids,
         'title': message.chat.title,
-        'mention_text': mention_text
+        'admin_id': message.from_user.id
     }
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):

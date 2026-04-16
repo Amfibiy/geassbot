@@ -213,10 +213,9 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
             show_weeks_of_month_menu(call, bot, b_ts, e_ts, label, back_cb="list_view_all")
         elif v_type == 'wview':
             session['list_parent_wview'] = call.data
-            back_cb = session.get('list_parent_mview', 'list_back_to_periods')
+            back_cb = session.get('list_parent_mview', "list_view_all")
             show_days_of_week_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
         elif v_type == 'dview':
-            back_cb = session.get('list_parent_wview', 'list_back_to_periods')
-            show_hours_of_day_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
-            
-        bot.answer_callback_query(call.id)
+            back_cb = session.get('list_parent_wview', "list_view_all")
+            chat_id = session.get('list_chat_id')
+            show_hours_of_day_menu(call, bot, b_ts, e_ts, label, chat_id, u_id, back_cb=back_cb)
