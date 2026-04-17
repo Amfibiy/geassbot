@@ -16,7 +16,7 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 try:
-    from config.settings import BOT_TOKEN, COLLECTION_DURATION
+    from config.settings import BOT_TOKEN
     from database.mongo import get_known_groups
     from handlers import register_all_handlers
 except ImportError as e:
