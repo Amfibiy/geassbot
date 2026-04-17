@@ -6,7 +6,7 @@ def setup_bot_menu(bot):
         types.BotCommand("help", "❓ Инструкция"),
         types.BotCommand("list", "📋 Мои группы и статистика"),
         types.BotCommand("clean", "🧹 Очистить историю"),
-        types.BotCommand("add", "👤 Добавить участника")
+        types.BotCommand("settings", "⚙️ Настройки") # Заменили /add на /settings
     ]
     bot.set_my_commands(private_commands, scope=types.BotCommandScopeAllPrivateChats())
 
@@ -14,7 +14,8 @@ def setup_bot_menu(bot):
         types.BotCommand("collect", "🚀 Начать сбор"),
         types.BotCommand("test", "🧪 Тестовый сбор"),
         types.BotCommand("stop", "🛑 Завершить сбор"),
-        types.BotCommand("list", "📊 Статус текущего сбора")
+        types.BotCommand("list", "📊 Статус текущего сбора"),
+        types.BotCommand("settings", "⚙️ Настройки") # Добавляем и сюда для удобства админов
     ]
     bot.set_my_commands(admin_commands, scope=types.BotCommandScopeAllChatAdministrators())
     
