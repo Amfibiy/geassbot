@@ -1,30 +1,26 @@
 import time
-import random
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config.settings import COLLECTION_DURATION
-from database.mongo import save_history_record, get_all_members_ids,get_combined_settings,save_known_group,save_user_id
+from database.mongo import get_all_members_ids, get_combined_settings, save_known_group, save_user_id
 from utils.messages import (
-    START_MESSAGES_MANDATORY, COLLECT_BODY_ACTIVE, 
-    TEST_HEADER, TEST_BODY_ACTIVE
+    START_MESSAGES_MANDATORY, TEST_MESSAGES, COLLECT_BODY_ACTIVE, 
+    COLLECT_ALREADY_RUNNING, TEST_BODY_ACTIVE
 )
 
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
     admin_id = message.from_user.id
+    admin_username = message.from_user.username
     
-    # Регистрация
     save_known_group(chat_id, message.chat.title)
-    save_user_id(chat_id, admin_id, message.from_user.username)
+    save_user_id(chat_id, admin_id, admin_username)
     
     configs = get_combined_settings(chat_id, admin_id)
     duration_sec = configs['duration']
-    
-    # Если сбор уже идет
+
     if chat_id in collection_dict:
         col = collection_dict[chat_id]
         elapsed_sec = int(time.time() - col['start_time'])
         rem_sec = max(0, col['duration'] - elapsed_sec)
-        
         rem_fmt = f"{rem_sec // 60}:{rem_sec % 60:02d}"
         
         status_text = COLLECT_ALREADY_RUNNING.format(
@@ -36,23 +32,36 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
         return
 
     member_ids = get_all_members_ids(chat_id)
-    all_tags = "".join([f'<a href="tg://user?id={m_id}">\u2060</a>' for m_id in member_ids])
 
-    # Выбираем случайное приветственное сообщение
-    if is_test:
-        welcome_text = TEST_HEADER.format(duration=duration_sec // 60, tags=all_tags)
-    else:
-        welcome_text = random.choice(START_MESSAGES_MANDATORY).format(duration=duration_sec // 60, tags=all_tags)
+    templates = TEST_MESSAGES if is_test else START_MESSAGES_MANDATORY
+    num_messages = len(templates)
+    
+    chunk_size = 50
+    chunks = [member_ids[i:i + chunk_size] for i in range(0, len(member_ids), chunk_size)]
+    
+    for i in range(num_messages):
+        current_chunk = chunks[i] if i < len(chunks) else []
+        tags_html = "".join([f'<a href="tg://user?id={m_id}">\u2060</a>' for m_id in current_chunk])
+        
+        welcome_text = templates[i].format(
+            duration=duration_sec // 60,
+            tags=tags_html
+        )
+        
+        bot.send_message(chat_id, welcome_text, parse_mode="HTML")
+        time.sleep(0.15) 
 
-    bot.send_message(chat_id, welcome_text, parse_mode="HTML")
+    extra_tags = ""
+    if len(chunks) > num_messages:
+        remaining_ids = [uid for chunk in chunks[num_messages:] for uid in chunk]
+        extra_tags = "".join([f'<a href="tg://user?id={m_id}">\u2060</a>' for m_id in remaining_ids])
 
-    # Создаем сообщение с кнопкой
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
     
-    # Начальный текст таймера
     rem_initial = f"{duration_sec // 60}:00"
-    body_text = (TEST_BODY_ACTIVE if is_test else COLLECT_BODY_ACTIVE).format(remaining=rem_initial, tags=all_tags)
+    body_template = TEST_BODY_ACTIVE if is_test else COLLECT_BODY_ACTIVE
+    body_text = body_template.format(remaining=rem_initial, tags=extra_tags)
     
     sent_msg = bot.send_message(chat_id, body_text, reply_markup=markup, parse_mode="HTML")
     
@@ -61,9 +70,10 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
         'start_time': time.time(),
         'duration': duration_sec,
         'main_message_id': sent_msg.message_id,
-        'tags': all_tags, # Сохраняем теги, чтобы не генерить их каждый раз
+        'tags': extra_tags, 
         'is_test': is_test
     }
+
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = message.chat.id
     is_test = False
