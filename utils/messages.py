@@ -10,13 +10,12 @@ START_MESSAGES_MANDATORY = [
 
 COLLECT_BODY_ACTIVE = "🚨 <b>ВНИМАНИЕ!</b> 🚨\n\n🎯 <b>Начинается сбор участник"
 
-COLLECT_ALREADY_RUNNING = (
+COLLECT_BODY_ACTIVE = (
     "🚨 <b>ВНИМАНИЕ!</b> 🚨\n\n"
-    "🎯 Начинается сбор участников!\n"
+    "🎯 <b>Начинается сбор участников!</b>\n"
     "⏱ Осталось времени: {remaining}\n\n"
-    "👇 Присоединяйтесь по кнопке ниже"
+    "{tags}👇 Присоединяйтесь по кнопке ниже"
 )
-
 
 
 HELP_TEXT = """

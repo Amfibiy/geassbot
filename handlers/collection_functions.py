@@ -2,16 +2,20 @@ import time
 import random
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config.settings import COLLECTION_DURATION
-from database.mongo import save_history_record, get_all_members_ids,get_combined_settings,save_known_group
+from database.mongo import save_history_record, get_all_members_ids,get_combined_settings,save_known_group,save_user_id
 from utils.messages import (
     START_MESSAGES_MANDATORY, COLLECT_BODY_ACTIVE, 
     TEST_HEADER, TEST_BODY_ACTIVE
 )
 
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
+    """Полная функция запуска сбора с регистрацией инициатора"""
     chat_id = message.chat.id
     admin_id = message.from_user.id
+    admin_username = message.from_user.username
+    
     save_known_group(chat_id, message.chat.title)
+    save_user_id(chat_id, admin_id, admin_username)
     
     configs = get_combined_settings(chat_id, admin_id)
     limit_min = configs['duration'] // 60
@@ -25,42 +29,34 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
 
     if is_test:
         bot.send_message(chat_id, TEST_HEADER.format(duration=limit_min, tags=all_tags), parse_mode="HTML")
-        
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
+        markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
         
-        rem_text = f"{limit_min}:00"
-        sent_msg = bot.send_message(
-            chat_id, 
-            TEST_BODY_ACTIVE.format(remaining=rem_text, tags=all_tags),
-            reply_markup=markup,
-            parse_mode="HTML"
-        )
+        sent_msg = bot.send_message(chat_id, TEST_BODY_ACTIVE, reply_markup=markup, parse_mode="HTML")
+        
+        collection_dict[chat_id] = {
+            'participants': [],
+            'start_time': time.time(),
+            'duration': configs['duration'],
+            'main_message_id': sent_msg.message_id,
+            'title': "Тестовый сбор"
+        }
     else:
-        for msg_template in START_MESSAGES_MANDATORY:
-            bot.send_message(chat_id, msg_template.format(duration=limit_min, tags=all_tags), parse_mode="HTML")
-            time.sleep(0.3) # Маленькая пауза для соблюдения порядка
-
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
+        random_start_msg = random.choice(START_MESSAGES_MANDATORY)
+        bot.send_message(chat_id, random_start_msg.format(duration=limit_min, tags=all_tags), parse_mode="HTML")
         
-        rem_text = f"{limit_min}:00"
-        sent_msg = bot.send_message(
-            chat_id, 
-            COLLECT_BODY_ACTIVE.format(remaining=rem_text, tags=all_tags),
-            reply_markup=markup,
-            parse_mode="HTML"
-        )
-
-    collection_dict[chat_id] = {
-        'start_time': time.time(),
-        'duration': configs['duration'],
-        'participants': [],
-        'main_message_id': sent_msg.message_id,
-        'title': message.chat.title,
-        'is_test': is_test,
-        'all_tags': all_tags 
-    }
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
+        
+        sent_msg = bot.send_message(chat_id, COLLECT_BODY_ACTIVE, reply_markup=markup, parse_mode="HTML")
+        
+        collection_dict[chat_id] = {
+            'participants': [],
+            'start_time': time.time(),
+            'duration': configs['duration'],
+            'main_message_id': sent_msg.message_id,
+            'title': "Обычный сбор"
+        }
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = message.chat.id
@@ -97,22 +93,22 @@ def start_test_collection(message, bot, active_collections, test_collection, kno
         return
     _start_generic_collection(message, bot, test_collection, is_test=True)
 
-def handle_join(call, bot, active_collections, test_collection, known_groups, user_sessions):
-    # Принудительно делаем chat_id числом
-    chat_id = int(call.message.chat.id)
-    col = active_collections.get(chat_id) or test_collection.get(chat_id)
-
+def handle_join(call, bot, collection_dict):
+    chat_id = call.message.chat.id
+    col = collection_dict.get(chat_id)
+    
     if not col:
-        bot.answer_callback_query(call.id, "❌ Сбор уже завершен.", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Сбор завершен или не найден.", show_alert=True)
         return
 
     user = call.from_user
-    # Проверка на наличие участника
+    
+    save_user_id(chat_id, user.id, user.username)
+
     if any(p.get('id') == user.id for p in col['participants']):
-        bot.answer_callback_query(call.id, "✅ Вы уже в списке!")
+        bot.answer_callback_query(call.id, "✅ Вы уже в списке участников!")
         return
 
-    # Добавляем данные, которые нужны для /list в mongo.py
     col['participants'].append({
         'id': user.id, 
         'username': user.username, 
@@ -125,14 +121,13 @@ def handle_join(call, bot, active_collections, test_collection, known_groups, us
     markup.add(InlineKeyboardButton(f"✅ Присоединиться ({count})", callback_data="join_collection"))
     
     try:
-        # Обновляем именно то сообщение, где кнопка
         bot.edit_message_reply_markup(
             chat_id=chat_id,
             message_id=col['main_message_id'],
             reply_markup=markup
         )
     except Exception as e:
-        print(f"Ошибка обновления кнопки: {e}")
+        print(f"Ошибка обновления кнопок: {e}")
 
     bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы в деле!")
 

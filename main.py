@@ -99,28 +99,23 @@ def update_counters():
             print(f"❌ Ошибка в цикле счетчика: {e}")
         time.sleep(30)
 
-@bot.message_handler(content_types=['new_chat_members'])
-def handle_new_chat_members(message):
-    for member in message.new_chat_members:
-        if member.id == bot.get_me().id:
-            save_known_group(message.chat.id, message.chat.title)
-            bot.send_message(message.chat.id, "Бот активирован и группа зарегистрирована! ✅")
-
+@bot.message_handler(
+    func=lambda m: m.chat.type in ['group', 'supergroup'], 
+    content_types=['text', 'photo', 'video', 'document', 'sticker', 'voice', 'video_note', 'location', 'contact']
+)
+def registration_handler(message):
+    save_known_group(message.chat.id, message.chat.title)
+    save_user_id(message.chat.id, message.from_user.id, message.from_user.username)
+    
 @bot.message_reaction_handler()
 def handle_reaction(reaction):
     chat_id = reaction.chat.id
     chat_title = reaction.chat.title or f"Group {chat_id}"
+    
     save_known_group(chat_id, chat_title)
+    
     if reaction.user:
         save_user_id(chat_id, reaction.user.id, reaction.user.username)
-
-@bot.message_handler(
-    func=lambda m: m.chat.type in ['group', 'supergroup'] and (m.text is None or not m.text.startswith('/')), 
-    content_types=['text', 'photo', 'video', 'document', 'sticker', 'voice', 'video_note']
-)
-def silent_registration(message):
-    save_known_group(message.chat.id, message.chat.title)
-    save_user_id(message.chat.id, message.from_user.id, message.from_user.username)
     
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
