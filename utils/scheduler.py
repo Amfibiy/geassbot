@@ -1,23 +1,23 @@
 import time
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-def update_counters(bot, active_collections, test_collection, COLLECTION_DURATION):
+def update_counters(bot, active_collections, test_collection):
     while True:
         try:
             now = time.time()
             for coll_dict, is_test in [(active_collections, False), (test_collection, True)]:
                 for chat_id, col in list(coll_dict.items()):
                     elapsed = int(now - col['start_time'])
+                    duration = col.get('duration', 1800) 
                     
-                    if elapsed >= COLLECTION_DURATION:
+                    if elapsed >= duration:
                         from handlers.collection_functions import stop_collection_automatically
                         stop_collection_automatically(chat_id, bot, coll_dict, is_test)
                     else:
-                        rem = COLLECTION_DURATION - elapsed
+                        rem = duration - elapsed
                         minutes_rem = rem // 60
                         seconds_rem = rem % 60
                         
-                        # Текст БЕЗ тегов, чтобы не вызывать повторные пуши
                         if is_test:
                             new_text = (
                                 f"🧪 <b>ТЕСТОВЫЙ СБОР</b>\n\n"

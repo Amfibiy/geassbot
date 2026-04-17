@@ -2,6 +2,7 @@ import pymongo
 import datetime
 from config.settings import MONGO_URI
 from bson import ObjectId
+import re
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client['telegram_bot_db']
@@ -12,17 +13,21 @@ settings_col = db['group_settings']
 admin_prefs_col = db['admin_preferences']
 
 
-def save_known_group(chat_id, title):
+def save_known_group(chat_id, title, member_count=None):
     c_id = int(chat_id)
-    existing = groups_col.find_one({'chat_id': c_id})
-    if not existing:
-        print(f"🆕 [DB] Зарегистрирована новая группа: {title} ({c_id})", flush=True)
+    update_data = {'title': title, 'last_activity': datetime.datetime.now()}
+    if member_count is not None:
+        update_data['member_count'] = member_count
 
     groups_col.update_one(
         {'chat_id': c_id},
-        {'$set': {'title': title, 'last_activity': datetime.datetime.now()}},
+        {'$set': update_data},
         upsert=True
     )
+
+def get_group_member_count(chat_id):
+    group = groups_col.find_one({'chat_id': int(chat_id)})
+    return group.get('member_count', 0) if group else 0
 
 def get_known_groups():
     return list(groups_col.find({}, {'_id': 0, 'chat_id': 1, 'title': 1}))
@@ -123,8 +128,14 @@ def get_combined_settings(chat_id, admin_id):
     }
 
 def get_all_members_ids(chat_id):
-    members = members_col.find({'chat_id': int(chat_id)})
-    return [m['user_id'] for m in members if m.get('user_id') is not None]
+    c_id = int(chat_id)
+    settings = settings_col.find_one({'chat_id': c_id}) or {}
+    exceptions = settings.get('exceptions', [])
+    members = members_col.find({
+        'chat_id': c_id, 
+        'user_id': {'$nin': exceptions}
+    })
+    return [m['user_id'] for m in members]
 
 def delete_history_record_by_id(record_id):
     try:
@@ -133,3 +144,35 @@ def delete_history_record_by_id(record_id):
     except Exception as e:
         print(f"❌ Ошибка при удалении записи {record_id}: {e}")
         return False
+    
+def add_to_exceptions(chat_id, username):
+    clean_name = username.replace("@", "").strip()
+    user = members_col.find_one({
+        'chat_id': int(chat_id), 
+        'username': re.compile(f"^{clean_name}$", re.I)
+    })
+    
+    if not user:
+        return False, f"Пользователь @{clean_name} не найден. Он должен быть участником группы."
+    
+    settings_col.update_one(
+        {'chat_id': int(chat_id)},
+        {'$addToSet': {'exceptions': user['user_id']}},
+        upsert=True
+    )
+    return True, f"✅ @{user['username']} добавлен в исключения."
+
+def get_exceptions_list(chat_id):
+    settings = settings_col.find_one({'chat_id': int(chat_id)}) or {}
+    ex_ids = settings.get('exceptions', [])
+    if not ex_ids:
+        return []
+    
+    users = members_col.find({'chat_id': int(chat_id), 'user_id': {'$in': ex_ids}})
+    return [f"@{u['username']}" for u in users if u.get('username')]
+
+def clear_all_exceptions(chat_id):
+    settings_col.update_one(
+        {'chat_id': int(chat_id)},
+        {'$set': {'exceptions': []}}
+    )

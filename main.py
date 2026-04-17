@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     counter_thread = threading.Thread(
         target=update_counters, 
-        args=(bot, active_collections, test_collection, COLLECTION_DURATION)
+        args=(bot, active_collections, test_collection)
     )
     counter_thread.daemon = True
     counter_thread.start()
