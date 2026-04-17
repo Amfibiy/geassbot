@@ -2,51 +2,64 @@ import time
 import random
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config.settings import COLLECTION_DURATION
-from database.mongo import save_history_record, get_all_members_ids,get_combined_settings
-from utils.messages import START_MESSAGES, TEST_START_MSG, COLLECT_ALREADY_RUNNING
+from database.mongo import save_history_record, get_all_members_ids,get_combined_settings,save_known_group
+from utils.messages import (
+    START_MESSAGES_MANDATORY, COLLECT_BODY_ACTIVE, 
+    TEST_HEADER, TEST_BODY_ACTIVE
+)
 
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
     admin_id = message.from_user.id
+    save_known_group(chat_id, message.chat.title)
     
     configs = get_combined_settings(chat_id, admin_id)
-    current_limit = configs['duration']
-    limit_min = current_limit // 60
+    limit_min = configs['duration'] // 60
 
     if chat_id in collection_dict:
-        col = collection_dict[chat_id]
-        elapsed = int(time.time() - col['start_time'])
-        rem = max(0, col['duration'] - elapsed)
-        
-        status_text = COLLECT_ALREADY_RUNNING.format(
-            remaining=f"{rem // 60:02d}:{rem % 60:02d}"
-        )
-        bot.reply_to(message, status_text, parse_mode="HTML")
+        bot.reply_to(message, "⚠️ Сбор уже запущен!")
         return
 
     member_ids = get_all_members_ids(chat_id)
+    all_tags = "".join([f'<a href="tg://user?id={m_id}">\u2060</a>' for m_id in member_ids])
 
     if is_test:
-        text = TEST_START_MSG.text = TEST_START_MSG.format(duration=limit_min)
+        bot.send_message(chat_id, TEST_HEADER.format(duration=limit_min, tags=all_tags), parse_mode="HTML")
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
+        
+        rem_text = f"{limit_min}:00"
+        sent_msg = bot.send_message(
+            chat_id, 
+            TEST_BODY_ACTIVE.format(remaining=rem_text, tags=all_tags),
+            reply_markup=markup,
+            parse_mode="HTML"
+        )
     else:
-        raw_text = random.choice(START_MESSAGES)
-        text = raw_text.format(duration=limit_min)
+        for msg_template in START_MESSAGES_MANDATORY:
+            bot.send_message(chat_id, msg_template.format(duration=limit_min, tags=all_tags), parse_mode="HTML")
+            time.sleep(0.3) # Маленькая пауза для соблюдения порядка
 
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(f"✅ Присоединиться", callback_data="join_collection"))
-
-    sent_msg = bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
+        
+        rem_text = f"{limit_min}:00"
+        sent_msg = bot.send_message(
+            chat_id, 
+            COLLECT_BODY_ACTIVE.format(remaining=rem_text, tags=all_tags),
+            reply_markup=markup,
+            parse_mode="HTML"
+        )
 
     collection_dict[chat_id] = {
-        'chat_id': chat_id,              
-        'main_message_id': sent_msg.message_id,
         'start_time': time.time(),
-        'duration': current_limit,
+        'duration': configs['duration'],
         'participants': [],
-        'all_known_ids': member_ids,
+        'main_message_id': sent_msg.message_id,
         'title': message.chat.title,
-        'admin_id': admin_id,
-        'is_test': is_test
+        'is_test': is_test,
+        'all_tags': all_tags 
     }
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
