@@ -9,55 +9,61 @@ from utils.messages import (
 )
 
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
-    """Полная функция запуска сбора с регистрацией инициатора"""
     chat_id = message.chat.id
     admin_id = message.from_user.id
-    admin_username = message.from_user.username
     
+    # Регистрация
     save_known_group(chat_id, message.chat.title)
-    save_user_id(chat_id, admin_id, admin_username)
+    save_user_id(chat_id, admin_id, message.from_user.username)
     
     configs = get_combined_settings(chat_id, admin_id)
-    limit_min = configs['duration'] // 60
-
+    duration_sec = configs['duration']
+    
+    # Если сбор уже идет
     if chat_id in collection_dict:
-        bot.reply_to(message, "⚠️ Сбор уже запущен!")
+        col = collection_dict[chat_id]
+        elapsed_sec = int(time.time() - col['start_time'])
+        rem_sec = max(0, col['duration'] - elapsed_sec)
+        
+        rem_fmt = f"{rem_sec // 60}:{rem_sec % 60:02d}"
+        
+        status_text = COLLECT_ALREADY_RUNNING.format(
+            count=len(col['participants']),
+            elapsed=elapsed_sec // 60,
+            remaining=rem_fmt
+        )
+        bot.reply_to(message, status_text, parse_mode="HTML")
         return
 
     member_ids = get_all_members_ids(chat_id)
     all_tags = "".join([f'<a href="tg://user?id={m_id}">\u2060</a>' for m_id in member_ids])
 
+    # Выбираем случайное приветственное сообщение
     if is_test:
-        bot.send_message(chat_id, TEST_HEADER.format(duration=limit_min, tags=all_tags), parse_mode="HTML")
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
-        
-        sent_msg = bot.send_message(chat_id, TEST_BODY_ACTIVE, reply_markup=markup, parse_mode="HTML")
-        
-        collection_dict[chat_id] = {
-            'participants': [],
-            'start_time': time.time(),
-            'duration': configs['duration'],
-            'main_message_id': sent_msg.message_id,
-            'title': "Тестовый сбор"
-        }
+        welcome_text = TEST_HEADER.format(duration=duration_sec // 60, tags=all_tags)
     else:
-        random_start_msg = random.choice(START_MESSAGES_MANDATORY)
-        bot.send_message(chat_id, random_start_msg.format(duration=limit_min, tags=all_tags), parse_mode="HTML")
-        
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
-        
-        sent_msg = bot.send_message(chat_id, COLLECT_BODY_ACTIVE, reply_markup=markup, parse_mode="HTML")
-        
-        collection_dict[chat_id] = {
-            'participants': [],
-            'start_time': time.time(),
-            'duration': configs['duration'],
-            'main_message_id': sent_msg.message_id,
-            'title': "Обычный сбор"
-        }
+        welcome_text = random.choice(START_MESSAGES_MANDATORY).format(duration=duration_sec // 60, tags=all_tags)
 
+    bot.send_message(chat_id, welcome_text, parse_mode="HTML")
+
+    # Создаем сообщение с кнопкой
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
+    
+    # Начальный текст таймера
+    rem_initial = f"{duration_sec // 60}:00"
+    body_text = (TEST_BODY_ACTIVE if is_test else COLLECT_BODY_ACTIVE).format(remaining=rem_initial, tags=all_tags)
+    
+    sent_msg = bot.send_message(chat_id, body_text, reply_markup=markup, parse_mode="HTML")
+    
+    collection_dict[chat_id] = {
+        'participants': [],
+        'start_time': time.time(),
+        'duration': duration_sec,
+        'main_message_id': sent_msg.message_id,
+        'tags': all_tags, # Сохраняем теги, чтобы не генерить их каждый раз
+        'is_test': is_test
+    }
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = message.chat.id
     is_test = False
