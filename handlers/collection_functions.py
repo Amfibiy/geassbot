@@ -8,6 +8,7 @@ from utils.messages import START_MESSAGES, TEST_START_MSG, COLLECT_ALREADY_RUNNI
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
     admin_id = message.from_user.id
+    
     configs = get_combined_settings(chat_id, admin_id)
     current_limit = configs['duration']
     limit_min = current_limit // 60
@@ -18,36 +19,34 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
         rem = max(0, col['duration'] - elapsed)
         
         status_text = COLLECT_ALREADY_RUNNING.format(
-            count=len(col['participants']),
-            elapsed=elapsed // 60,
             remaining=f"{rem // 60:02d}:{rem % 60:02d}"
         )
         bot.reply_to(message, status_text, parse_mode="HTML")
         return
-    member_ids = get_all_members_ids(chat_id)
-    admin_username = message.from_user.username or message.from_user.first_name
 
-    limit_min = current_limit // 60
+    member_ids = get_all_members_ids(chat_id)
 
     if is_test:
-        text = TEST_START_MSG.format(admin=admin_username).replace("30 минут", f"{limit_min} минут")
+        text = TEST_START_MSG.text = TEST_START_MSG.format(duration=limit_min)
     else:
         raw_text = random.choice(START_MESSAGES)
-        text = raw_text.replace("30 минут", f"{limit_min} минут")
+        text = raw_text.format(duration=limit_min)
 
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
+    markup.add(InlineKeyboardButton(f"✅ Присоединиться", callback_data="join_collection"))
 
     sent_msg = bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
 
     collection_dict[chat_id] = {
+        'chat_id': chat_id,              
         'main_message_id': sent_msg.message_id,
         'start_time': time.time(),
-        'duration': current_limit, #
+        'duration': current_limit,
         'participants': [],
         'all_known_ids': member_ids,
         'title': message.chat.title,
-        'admin_id': message.from_user.id
+        'admin_id': admin_id,
+        'is_test': is_test
     }
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):

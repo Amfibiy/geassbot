@@ -119,7 +119,7 @@ def get_combined_settings(chat_id, admin_id):
     a_set = admin_prefs_col.find_one({'admin_id': int(admin_id)}) or {}
     return {
         'duration': g_set.get('default_duration', 1800),
-        'timezone': a_set.get('timezone', 'МСК')
+        'timezone': a_set.get('timezone', 'МСК+2')
     }
 
 def get_all_members_ids(chat_id):
