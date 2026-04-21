@@ -7,8 +7,9 @@ import sys
 import os
 from flask import Flask
 from config.commands_setup import setup_bot_menu
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database.mongo import save_known_group,save_user_id
+from telebot.handler_backends import BaseMiddleware # НОВЫЙ ИМПОРТ
+from telebot.types import Message, CallbackQuery # НОВЫЙ ИМПОРТ
+from database.mongo import save_known_group, save_user_id
 from utils.scheduler import update_counters
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +36,30 @@ def run_flask():
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+class RegistrationMiddleware(BaseMiddleware):
+    def __init__(self):
+        self.update_types = ['message', 'callback_query']
+
+    def pre_process(self, message, data):
+        if isinstance(message, Message):
+            chat = message.chat
+            user = message.from_user
+        elif isinstance(message, CallbackQuery):
+            chat = message.message.chat
+            user = message.from_user
+        else:
+            return
+
+        if chat.type in ['group', 'supergroup']:
+            save_known_group(chat.id, chat.title)
+            if user and not user.is_bot:
+                save_user_id(chat.id, user.id, user.username)
+
+    def post_process(self, message, data, exception):
+        pass
+
+bot.setup_middleware(RegistrationMiddleware())
+
 active_collections = {}
 test_collection = {}
 user_sessions = {}
@@ -45,16 +70,6 @@ try:
     known_groups = {g['chat_id'] for g in all_groups}
 except Exception:
     known_groups = set()
-
-@bot.message_handler(
-    func=lambda m: m.chat.type in ['group', 'supergroup'], 
-    content_types=['text', 'photo', 'video', 'document', 'sticker', 'voice', 'video_note', 'location', 'contact']
-)
-def registration_handler(message):
-    save_known_group(message.chat.id, message.chat.title)
-    
-    if not message.from_user.is_bot:
-        save_user_id(message.chat.id, message.from_user.id, message.from_user.username)
 
 try:
     register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
