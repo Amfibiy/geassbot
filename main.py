@@ -46,11 +46,6 @@ try:
 except Exception:
     known_groups = set()
 
-try:
-    register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
-except Exception as e:
-    print(f"❌ Ошибка регистрации хэндлеров: {e}")
-
 @bot.message_handler(
     func=lambda m: m.chat.type in ['group', 'supergroup'], 
     content_types=['text', 'photo', 'video', 'document', 'sticker', 'voice', 'video_note', 'location', 'contact']
@@ -60,6 +55,11 @@ def registration_handler(message):
     
     if not message.from_user.is_bot:
         save_user_id(message.chat.id, message.from_user.id, message.from_user.username)
+
+try:
+    register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
+except Exception as e:
+    print(f"❌ Ошибка регистрации хэндлеров: {e}")
 
 @bot.message_reaction_handler()
 def handle_reaction(reaction):
