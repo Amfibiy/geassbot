@@ -57,16 +57,17 @@ except Exception as e:
 )
 def registration_handler(message):
     save_known_group(message.chat.id, message.chat.title)
-    save_user_id(message.chat.id, message.from_user.id, message.from_user.username)
     
+    if not message.from_user.is_bot:
+        save_user_id(message.chat.id, message.from_user.id, message.from_user.username)
+
 @bot.message_reaction_handler()
 def handle_reaction(reaction):
     chat_id = reaction.chat.id
     chat_title = reaction.chat.title or f"Group {chat_id}"
-    
     save_known_group(chat_id, chat_title)
-    
-    if reaction.user:
+
+    if reaction.user and not reaction.user.is_bot:
         save_user_id(chat_id, reaction.user.id, reaction.user.username)
     
 if __name__ == "__main__":

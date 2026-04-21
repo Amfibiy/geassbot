@@ -12,62 +12,59 @@ from utils.messages import (
 )
 from config.settings import EMOJI_LIST
 
+import time
+import random
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
     admin_id = message.from_user.id
-    m_count = bot.get_chat_member_count(chat_id)
-    save_known_group(chat_id, message.chat.title, member_count=m_count)
-    save_user_id(chat_id, admin_id, message.from_user.username)
+    if chat_id in collection_dict:
+        bot.send_message(chat_id, COLLECT_ALREADY_RUNNING, parse_mode="HTML")
+        return
+    member_ids = get_all_members_ids(chat_id)
+
+    bot_me = bot.get_me()
+    if bot_me.id in member_ids:
+        member_ids.remove(bot_me.id)
+
+    m_count = len(member_ids)
     
+    save_known_group(chat_id, message.chat.title, member_count=m_count)
+    if not message.from_user.is_bot:
+        save_user_id(chat_id, admin_id, message.from_user.username)
+
     configs = get_combined_settings(chat_id, admin_id)
     duration_sec = configs['duration']
 
-    if chat_id in collection_dict:
-        return
-
-    member_ids = get_all_members_ids(chat_id)
     templates = TEST_MESSAGES if is_test else START_MESSAGES_MANDATORY
-    num_templates = len(templates)
+    chosen_template = random.choice(templates)
+    tags_html = ""
+    for uid in member_ids:
+        tags_html += f'<a href="tg://user?id={uid}">\u200b</a>'
 
-    if member_ids:
-        chunk_size = math.ceil(len(member_ids) / num_templates)
-        chunks = [member_ids[i:i + chunk_size] for i in range(0, len(member_ids), chunk_size)]
-    else:
-        chunks = []
-
-    for i in range(num_templates):
-        current_chunk = chunks[i] if i < len(chunks) else []
-
-        emoji_tags = " ".join([
-            f'<a href="tg://user?id={m_id}">{random.choice(EMOJI_LIST)}</a>' 
-            for m_id in current_chunk
-        ])
-        
-        welcome_text = templates[i].format(
-            duration=duration_sec // 60,
-            tags=f"\n{emoji_tags}\n" if emoji_tags else ""
-        )
-        bot.send_message(chat_id, welcome_text, parse_mode="HTML")
-        time.sleep(0.3) 
+    text = chosen_template.format(
+        duration=duration_sec // 60,
+        tags=tags_html
+    )
 
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
-    
-    body_template = TEST_BODY_ACTIVE if is_test else COLLECT_BODY_ACTIVE
-    sent_msg = bot.send_message(
-        chat_id, 
-        body_template.format(remaining=f"{duration_sec // 60}:00", tags=""), 
-        reply_markup=markup, 
-        parse_mode="HTML"
-    )
-    
-    collection_dict[chat_id] = {
-        'participants': [],
-        'start_time': time.time(),
-        'duration': duration_sec,
-        'main_message_id': sent_msg.message_id,
-        'is_test': is_test
-    }
+    markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
+
+    try:
+        sent_msg = bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
+        
+        collection_dict[chat_id] = {
+            'main_message_id': sent_msg.message_id,
+            'start_time': time.time(),
+            'duration': duration_sec,
+            'participants': [],  
+            'admin_id': admin_id,
+            'is_test': is_test
+        }
+    except Exception as e:
+        print(f"❌ Ошибка при запуске сбора: {e}")
+        bot.send_message(chat_id, "⚠️ Не удалось запустить сбор. Проверьте права бота.")
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = message.chat.id

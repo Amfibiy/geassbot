@@ -13,15 +13,17 @@ settings_col = db['group_settings']
 admin_prefs_col = db['admin_preferences']
 
 
-def save_known_group(chat_id, title, member_count=None):
+def save_known_group(chat_id, title):
     c_id = int(chat_id)
-    update_data = {'title': title, 'last_activity': datetime.datetime.now()}
-    if member_count is not None:
-        update_data['member_count'] = member_count
-
+    actual_count = members_col.count_documents({'chat_id': c_id})
+    
     groups_col.update_one(
         {'chat_id': c_id},
-        {'$set': update_data},
+        {'$set': {
+            'title': title, 
+            'last_activity': datetime.datetime.now(),
+            'member_count': actual_count
+        }},
         upsert=True
     )
 
@@ -81,19 +83,12 @@ def delete_history_records(chat_id, period_type, *args):
 def clear_all_history():
     history_col.delete_many({})
 
-def save_user_id(chat_id, user_id, username, first_name=None):
+def save_user_id(chat_id, u_id, username):
     c_id = int(chat_id)
-    u_id = int(user_id)
-    clean_username = username.replace('@', '') if username else None
-    
+    clean_username = username.replace("@", "").strip() if username else None
+
     existing_user = members_col.find_one({'chat_id': c_id, 'user_id': u_id})
     
-    if clean_username:
-        members_col.update_one(
-            {'chat_id': c_id, 'username': clean_username, 'user_id': None},
-            {'$set': {'user_id': u_id, 'last_seen': datetime.datetime.now()}}
-        )
-
     members_col.update_one(
         {'chat_id': c_id, 'user_id': u_id},
         {'$set': {
@@ -102,8 +97,17 @@ def save_user_id(chat_id, user_id, username, first_name=None):
         }},
         upsert=True
     )
-
+    
+    update_group_actual_count(c_id)
+    
     return existing_user is None
+
+def update_group_actual_count(chat_id):
+    actual_count = members_col.count_documents({'chat_id': int(chat_id)})
+    groups_col.update_one(
+        {'chat_id': int(chat_id)},
+        {'$set': {'member_count': actual_count}}
+    )
 
 def update_group_duration(chat_id, duration_min):
     settings_col.update_one(
