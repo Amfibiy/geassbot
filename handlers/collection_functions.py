@@ -21,7 +21,7 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
         elapsed_min = int((time.time() - col['start_time']) // 60)
         total_min = col['duration'] // 60
         rem_min = max(0, total_min - elapsed_min)
-
+        
         try:
             error_text = COLLECT_ALREADY_RUNNING.format(
                 count=len(col['participants']),
@@ -30,10 +30,9 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
             )
             bot.send_message(chat_id, error_text, parse_mode="HTML")
         except Exception as e:
-            print(f"❌ Ошибка вывода COLLECT_ALREADY_RUNNING: {e}")
             bot.send_message(chat_id, "⚠️ Сбор уже запущен!")
         return
-    
+
     member_ids = get_all_members_ids(chat_id)
 
     bot_me = bot.get_me()
@@ -51,28 +50,37 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
     templates = TEST_MESSAGES if is_test else START_MESSAGES_MANDATORY
     chosen_template = random.choice(templates)
 
-    tags_html = ""
-    for uid in member_ids:
-        tags_html += f'<a href="tg://user?id={uid}">\u200b</a>'
+    tags_html_list = []
+    for i, uid in enumerate(member_ids):
+        emoji = EMOJI_LIST[i % len(EMOJI_LIST)]
+        tags_html_list.append(f'<a href="tg://user?id={uid}">{emoji}</a>')
+    
+
+    tags_string = " ".join(tags_html_list)
+    if tags_string:
+        tags_string = f"\n\n{tags_string}\n"
 
     try:
         full_text = chosen_template.format(
             duration=duration_sec // 60,
-            tags=tags_html
+            tags=tags_string
         )
     except Exception as e:
-        print(f"❌ Ошибка форматирования шаблона: {e}")
-        full_text = "🎯 Сбор начат! Нажмите кнопку ниже."
+        print(f"❌ Ошибка форматирования: {e}")
+        full_text = f"🎯 Сбор начат! {tags_string}"
 
     markup = InlineKeyboardMarkup()
-    btn_text = f"✅ Присоединиться (0)"
-    markup.add(InlineKeyboardButton(btn_text, callback_data="join_collection"))
+    markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
 
+    # 6. Отправка сообщения
     try:
         sent_msg = bot.send_message(chat_id, full_text, reply_markup=markup, parse_mode="HTML")
         
+        # Сохраняем данные во временный словарь (как в main.py)
         collection_dict[chat_id] = {
             'main_message_id': sent_msg.message_id,
+            'chat_id': chat_id,
+            'title': message.chat.title,
             'start_time': time.time(),
             'duration': duration_sec,
             'participants': [],  
@@ -80,16 +88,16 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
             'is_test': is_test
         }
     except Exception as e:
-        print(f"❌ Критическая ошибка при отправке сообщения: {e}")
-        bot.send_message(chat_id, "🎯 Сбор начат (ошибка разметки, но кнопка активна).", reply_markup=markup)
+        print(f"❌ Ошибка отправки: {e}")
+        bot.send_message(chat_id, "🎯 Сбор начат (ошибка разметки).", reply_markup=markup)
+
+# Остальные функции (stop_collection, handle_join и т.д.) остаются без изменений
+# так как они работают с логикой кнопок и БД, а не с формированием тегов.
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = message.chat.id
-    col = active_collections.pop(chat_id, None)
-    is_test = False
-    if not col:
-        col = test_collection.pop(chat_id, None)
-        is_test = True
+    col = active_collections.pop(chat_id, None) or test_collection.pop(chat_id, None)
+    is_test = col.get('is_test', False) if col else False
         
     if not col:
         bot.reply_to(message, "❌ Нет активного сбора.")
@@ -130,7 +138,6 @@ def handle_join(call, bot, active_collections, test_collection):
         return
 
     user = call.from_user
-    # Проверка на дубликаты
     if any(p['id'] == user.id for p in col['participants']):
         bot.answer_callback_query(call.id, "✅ Вы уже записаны!")
         return
