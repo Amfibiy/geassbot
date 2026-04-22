@@ -34,7 +34,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000)) 
     app.run(host='0.0.0.0', port=port)
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN,use_class_middlewares=True)
 
 class RegistrationMiddleware(BaseMiddleware):
     def __init__(self):
