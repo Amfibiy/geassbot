@@ -12,10 +12,14 @@ members_col = db['chat_members']
 settings_col = db['group_settings']
 admin_prefs_col = db['admin_preferences']
 
-
-def save_known_group(chat_id, title):
+def save_known_group(chat_id, title, member_count=None):
     c_id = int(chat_id)
-    actual_count = members_col.count_documents({'chat_id': c_id})
+    
+    # Если количество участников не передали, считаем сами из базы
+    if member_count is None:
+        actual_count = members_col.count_documents({'chat_id': c_id})
+    else:
+        actual_count = member_count
     
     groups_col.update_one(
         {'chat_id': c_id},
