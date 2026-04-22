@@ -29,70 +29,60 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
                 remaining=f"{rem_min} мин"
             )
             bot.send_message(chat_id, error_text, parse_mode="HTML")
-        except Exception as e:
+        except:
             bot.send_message(chat_id, "⚠️ Сбор уже запущен!")
         return
 
     member_ids = get_all_members_ids(chat_id)
-
     bot_me = bot.get_me()
     if bot_me.id in member_ids:
         member_ids.remove(bot_me.id)
 
-    m_count = len(member_ids)
-    
-    save_known_group(chat_id, message.chat.title, member_count=m_count)
-    if not message.from_user.is_bot:
-        save_user_id(chat_id, admin_id, message.from_user.username)
-
+    save_known_group(chat_id, message.chat.title, member_count=len(member_ids))
     configs = get_combined_settings(chat_id, admin_id)
-    duration_sec = configs['duration']
+    
     templates = TEST_MESSAGES if is_test else START_MESSAGES_MANDATORY
-    chosen_template = random.choice(templates)
-
+    
     tags_html_list = []
     for i, uid in enumerate(member_ids):
         emoji = EMOJI_LIST[i % len(EMOJI_LIST)]
         tags_html_list.append(f'<a href="tg://user?id={uid}">{emoji}</a>')
     
-
     tags_string = " ".join(tags_html_list)
     if tags_string:
         tags_string = f"\n\n{tags_string}\n"
 
-    try:
-        full_text = chosen_template.format(
-            duration=duration_sec // 60,
-            tags=tags_string
-        )
-    except Exception as e:
-        print(f"❌ Ошибка форматирования: {e}")
-        full_text = f"🎯 Сбор начат! {tags_string}"
+    sent_msg = None
+    for i, template in enumerate(templates):
+        try:
+            full_text = template.format(
+                duration=configs['duration'] // 60,
+                tags=tags_string
+            )
+            
+            markup = None
+            if i == len(templates) - 1:
+                markup = InlineKeyboardMarkup()
+                markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
 
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
+            sent_msg = bot.send_message(chat_id, full_text, reply_markup=markup, parse_mode="HTML")
+            
+            time.sleep(0.5) 
+            
+        except Exception as e:
+            print(f"❌ Ошибка при отправке сообщения {i}: {e}")
 
-    # 6. Отправка сообщения
-    try:
-        sent_msg = bot.send_message(chat_id, full_text, reply_markup=markup, parse_mode="HTML")
-        
-        # Сохраняем данные во временный словарь (как в main.py)
+    if sent_msg:
         collection_dict[chat_id] = {
             'main_message_id': sent_msg.message_id,
             'chat_id': chat_id,
             'title': message.chat.title,
             'start_time': time.time(),
-            'duration': duration_sec,
+            'duration': configs['duration'],
             'participants': [],  
             'admin_id': admin_id,
             'is_test': is_test
         }
-    except Exception as e:
-        print(f"❌ Ошибка отправки: {e}")
-        bot.send_message(chat_id, "🎯 Сбор начат (ошибка разметки).", reply_markup=markup)
-
-# Остальные функции (stop_collection, handle_join и т.д.) остаются без изменений
-# так как они работают с логикой кнопок и БД, а не с формированием тегов.
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = message.chat.id
