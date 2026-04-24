@@ -13,15 +13,66 @@ def register_settings_handlers(bot, user_sessions):
     @bot.message_handler(commands=['settings'])
     def cmd_settings(message):
         if message.chat.type != 'private': return
-        groups = get_admin_groups(message.from_user.id, bot)
+        user_id = message.from_user.id
+        groups = get_admin_groups(user_id, bot)
+        
+        if user_id not in user_sessions:
+            user_sessions[user_id] = {}
+            
         if not groups:
             bot.reply_to(message, "📭 У вас нет групп для управления.")
             return
+            
+        user_sessions[user_id]['step'] = 'settings_wait_group_id'
         
+        text = "⚙️ <b>Настройки</b>\nВыберите группу:\n<i>Нажмите на кнопку или отправьте ID группы текстом.</i>\n\n"
         markup = types.InlineKeyboardMarkup()
-        for g in groups:
-            markup.add(types.InlineKeyboardButton(g['title'], callback_data=f"set_main_{g['chat_id']}"))
-        bot.send_message(message.chat.id, "⚙️ <b>Настройки</b>\nВыберите группу:", reply_markup=markup, parse_mode="HTML")
+        for i, g in enumerate(groups, 1):
+            title = g.get('title', 'Группа')
+            c_id = g.get('chat_id')
+            text += f"{i}. <b>{title}</b> <code>{c_id}</code>\n"
+            markup.add(types.InlineKeyboardButton(title, callback_data=f"set_main_{c_id}"))
+            
+        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+    
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'settings_wait_group_id')
+    def handle_settings_group_id_input(message):
+        user_id = message.from_user.id
+        text_id = message.text.strip()
+        
+        groups = get_admin_groups(user_id, bot)
+        valid_ids = [str(g['chat_id']) for g in groups]
+        
+        if text_id in valid_ids:
+            user_sessions[user_id]['step'] = None 
+            show_group_main_menu(message.chat.id, text_id, user_id, bot)
+        else:
+            bot.send_message(message.chat.id, "❌ Неверный ID группы или у вас нет прав. Попробуйте еще раз или выберите из списка.")
+
+    def show_group_main_menu(chat_id_to_send, target_chat_id, user_id, bot, message_id=None):
+        configs = get_combined_settings(target_chat_id, user_id)
+        text = (f"⚙️ <b>Настройки группы {target_chat_id}</b>\n\n"
+                f"⏱ Время сбора: <b>{configs['duration'] // 60} мин.</b>\n")
+        
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("⏱ Изменить время", callback_data=f"set_time_{target_chat_id}"),
+            types.InlineKeyboardButton("🚫 Добавить исключения", callback_data=f"set_ex_{target_chat_id}") 
+        )
+        
+        if message_id:
+            bot.edit_message_text(text, chat_id_to_send, message_id, reply_markup=markup, parse_mode="HTML")
+        else:
+            bot.send_message(chat_id_to_send, text, reply_markup=markup, parse_mode="HTML")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('set_main_'))
+    def group_main_menu(call):
+        target_chat_id = call.data.replace('set_main_', '')
+        user_id = call.from_user.id
+        if user_id in user_sessions:
+            user_sessions[user_id]['step'] = None
+            
+        show_group_main_menu(call.message.chat.id, target_chat_id, user_id, bot, call.message.message_id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_main_'))
     def group_main_menu(call):

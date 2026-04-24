@@ -10,12 +10,14 @@ from utils.messages import (
     START_MESSAGES_MANDATORY, TEST_MESSAGES, COLLECT_BODY_ACTIVE, 
     COLLECT_ALREADY_RUNNING, TEST_BODY_ACTIVE
 )
-from config.settings import EMOJI_LIST
+
+from config.settings import EMOJI_LIST, TAGS_CHUNK_SIZE
 
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
     admin_id = message.from_user.id
 
+    # 1. Проверка на активный сбор
     if chat_id in collection_dict:
         col = collection_dict[chat_id]
         elapsed_min = int((time.time() - col['start_time']) // 60)
@@ -23,54 +25,63 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
         rem_min = max(0, total_min - elapsed_min)
         
         try:
-            error_text = COLLECT_ALREADY_RUNNING.format(
+            bot.send_message(chat_id, COLLECT_ALREADY_RUNNING.format(
                 count=len(col['participants']),
                 elapsed=elapsed_min,
                 remaining=f"{rem_min} мин"
-            )
-            bot.send_message(chat_id, error_text, parse_mode="HTML")
+            ), parse_mode="HTML")
         except:
             bot.send_message(chat_id, "⚠️ Сбор уже запущен!")
         return
 
-    member_ids = get_all_members_ids(chat_id)
+    member_ids = list(set(get_all_members_ids(chat_id)))
     bot_me = bot.get_me()
     if bot_me.id in member_ids:
         member_ids.remove(bot_me.id)
 
     save_known_group(chat_id, message.chat.title, member_count=len(member_ids))
+    if not message.from_user.is_bot:
+        save_user_id(chat_id, admin_id, message.from_user.username)
+
     configs = get_combined_settings(chat_id, admin_id)
+    duration_min = configs['duration'] // 60
     
-    templates = TEST_MESSAGES if is_test else START_MESSAGES_MANDATORY
-    
-    tags_html_list = []
+    precursor_templates = TEST_MESSAGES if is_test else START_MESSAGES_MANDATORY
+    main_template = TEST_BODY_ACTIVE if is_test else COLLECT_BODY_ACTIVE
+
+    tag_chunks = []
+    current_chunk = []
     for i, uid in enumerate(member_ids):
         emoji = EMOJI_LIST[i % len(EMOJI_LIST)]
-        tags_html_list.append(f'<a href="tg://user?id={uid}">{emoji}</a>')
-    
-    tags_string = " ".join(tags_html_list)
-    if tags_string:
-        tags_string = f"\n\n{tags_string}\n"
+        current_chunk.append(f'<a href="tg://user?id={uid}">{emoji}</a>')
+        if len(current_chunk) == TAGS_CHUNK_SIZE:
+            tag_chunks.append(" ".join(current_chunk))
+            current_chunk = []
+    if current_chunk:
+        tag_chunks.append(" ".join(current_chunk))
 
+    all_templates = precursor_templates + [main_template]
     sent_msg = None
-    for i, template in enumerate(templates):
+
+    for i, template in enumerate(all_templates):
+        tags_string = f"\n\n{tag_chunks[i]}\n" if i < len(tag_chunks) else ""
+        
         try:
             full_text = template.format(
-                duration=configs['duration'] // 60,
+                duration=duration_min,
                 tags=tags_string
             )
             
             markup = None
-            if i == len(templates) - 1:
+            if i == len(all_templates) - 1:
                 markup = InlineKeyboardMarkup()
-                markup.add(InlineKeyboardButton(f"✅ Присоединиться (0)", callback_data="join_collection"))
+                markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
 
             sent_msg = bot.send_message(chat_id, full_text, reply_markup=markup, parse_mode="HTML")
-            
             time.sleep(0.5) 
             
         except Exception as e:
-            print(f"❌ Ошибка при отправке сообщения {i}: {e}")
+            print(f"❌ Ошибка отправки сообщения {i}: {e}")
 
     if sent_msg:
         collection_dict[chat_id] = {
@@ -79,7 +90,7 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
             'title': message.chat.title,
             'start_time': time.time(),
             'duration': configs['duration'],
-            'participants': [],  
+            'participants': [],
             'admin_id': admin_id,
             'is_test': is_test
         }
@@ -124,12 +135,12 @@ def handle_join(call, bot, active_collections, test_collection):
     col = active_collections.get(chat_id) or test_collection.get(chat_id)
     
     if not col:
-        bot.answer_callback_query(call.id, "❌ Сбор уже завершен.")
+        bot.answer_callback_query(call.id, "❌ Сбор уже завершен.", show_alert=True)
         return
 
     user = call.from_user
     if any(p['id'] == user.id for p in col['participants']):
-        bot.answer_callback_query(call.id, "✅ Вы уже записаны!")
+        bot.answer_callback_query(call.id, "✅ Вы уже в списке!")
         return
 
     col['participants'].append({'id': user.id, 'username': user.username, 'name': user.first_name})
@@ -139,9 +150,10 @@ def handle_join(call, bot, active_collections, test_collection):
     
     try:
         bot.edit_message_reply_markup(chat_id=chat_id, message_id=col['main_message_id'], reply_markup=markup)
-        bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы в списке!")
-    except Exception:
-        bot.answer_callback_query(call.id, "✅ Готово!")
+        bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы добавлены!")
+    except Exception as e:
+        print(f"❌ Ошибка обновления кнопки: {e}")
+        bot.answer_callback_query(call.id, "✅ Успешно!")
 
 def stop_collection_automatically(chat_id, bot, coll_dict, is_test):
     col = coll_dict.pop(int(chat_id), None)

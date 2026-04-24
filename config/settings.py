@@ -10,5 +10,6 @@ if not BOT_TOKEN:
 HISTORY_DAYS = int(os.getenv('HISTORY_DAYS', 90))
 MAX_UPDATES_LIMIT = int(os.getenv('MAX_UPDATES_LIMIT', 1000))
 EMOJI_LIST = ["🔥", "⚔️", "🛡", "⚡️", "🌟", "💠", "🔱", "🎯", "🌪", "✨"]
+TAGS_CHUNK_SIZE = 40
 
 MONGO_URI = os.getenv('MONGO_URI') or os.getenv('MONGO_URL')
