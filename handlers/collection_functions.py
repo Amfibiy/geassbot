@@ -140,20 +140,30 @@ def handle_join(call, bot, active_collections, test_collection):
 
     user = call.from_user
     if any(p['id'] == user.id for p in col['participants']):
-        bot.answer_callback_query(call.id, "✅ Вы уже в списке!")
+        bot.answer_callback_query(call.id, "✅ Вы уже записаны!")
         return
 
-    col['participants'].append({'id': user.id, 'username': user.username, 'name': user.first_name})
+    col['participants'].append({
+        'id': user.id, 
+        'username': user.username, 
+        'name': user.first_name
+    })
     
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(f"✅ Присоединиться ({len(col['participants'])})", callback_data="join_collection"))
+    markup.add(InlineKeyboardButton(
+        f"✅ Присоединиться ({len(col['participants'])})", 
+        callback_data="join_collection"
+    ))
     
     try:
-        bot.edit_message_reply_markup(chat_id=chat_id, message_id=col['main_message_id'], reply_markup=markup)
-        bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы добавлены!")
+        bot.edit_message_reply_markup(
+            chat_id=chat_id, 
+            message_id=col['main_message_id'], 
+            reply_markup=markup
+        )
+        bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы в списке!")
     except Exception as e:
-        print(f"❌ Ошибка обновления кнопки: {e}")
-        bot.answer_callback_query(call.id, "✅ Успешно!")
+        bot.answer_callback_query(call.id, "✅ Готово!")
 
 def stop_collection_automatically(chat_id, bot, coll_dict, is_test):
     col = coll_dict.pop(int(chat_id), None)

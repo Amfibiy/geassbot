@@ -184,3 +184,23 @@ def clear_all_exceptions(chat_id):
         {'chat_id': int(chat_id)},
         {'$set': {'exceptions': []}}
     )
+
+def remove_from_exceptions(chat_id, user_id):
+    try:
+        settings_col.update_one(
+            {'chat_id': int(chat_id)},
+            {'$pull': {'exceptions': int(user_id)}}
+        )
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка удаления исключения: {e}")
+        return False
+
+def get_exceptions_details(chat_id):
+    settings = settings_col.find_one({'chat_id': int(chat_id)})
+    if not settings or 'exceptions' not in settings:
+        return []
+    
+    u_ids = settings['exceptions']
+    users = members_col.find({'chat_id': int(chat_id), 'user_id': {'$in': u_ids}})
+    return [{'id': u['user_id'], 'username': u.get('username', '???')} for u in users]
