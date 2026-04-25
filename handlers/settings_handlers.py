@@ -32,7 +32,7 @@ def register_settings_handlers(bot, user_sessions):
         for i, g in enumerate(groups, 1):
             title = g.get('title', 'Группа')
             c_id = g.get('chat_id')
-            text += f"{i}. <b>{title}</b> <code>{c_id}</code>\n"
+            text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
             markup.add(types.InlineKeyboardButton(title, callback_data=f"set_main_{c_id}"))
             
         bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
@@ -53,13 +53,16 @@ def register_settings_handlers(bot, user_sessions):
 
     def show_group_main_menu(chat_id_to_send, target_chat_id, user_id, bot, message_id=None):
         configs = get_combined_settings(target_chat_id, user_id)
-        text = (f"⚙️ <b>Настройки группы {target_chat_id}</b>\n\n"
-                f"⏱ Время сбора: <b>{configs['duration'] // 60} мин.</b>\n")
+        text = (f"🛠 <b>Настройки группы {target_chat_id}</b>\n\n"
+                f"⏱ Время сбора: <b>{configs['duration'] // 60} мин.</b>\n"
+                f"🌍 Ваш часовой пояс: {configs.get('timezone', 'Не задан')}")
         
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("⏱ Изменить время", callback_data=f"set_time_{target_chat_id}"),
-            types.InlineKeyboardButton("🚫 Добавить исключения", callback_data=f"set_ex_{target_chat_id}") 
+            types.InlineKeyboardButton("⏱ Изменить время", callback_data=f"set_dur_{target_chat_id}"),
+            types.InlineKeyboardButton("🌍 Выбрать часовой пояс", callback_data=f"set_tz_{target_chat_id}"),
+            types.InlineKeyboardButton("🚫 Добавить исключения", callback_data=f"set_ex_{target_chat_id}"),
+            types.InlineKeyboardButton("🔙 К списку групп", callback_data="set_back_list")
         )
         
         if message_id:
@@ -74,24 +77,8 @@ def register_settings_handlers(bot, user_sessions):
         if user_id in user_sessions:
             user_sessions[user_id]['step'] = None
             
+        bot.answer_callback_query(call.id)
         show_group_main_menu(call.message.chat.id, target_chat_id, user_id, bot, call.message.message_id)
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('set_main_'))
-    def group_main_menu(call):
-        chat_id = call.data.replace('set_main_', '')
-        configs = get_combined_settings(chat_id, call.from_user.id)
-        
-        text = (f"🛠 <b>Настройки группы</b>\n\n"
-                f"⏱ Время сбора: {configs['duration'] // 60} мин\n"
-                f"🌍 Ваш часовой пояс: {configs['timezone']}")
-        
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(
-            types.InlineKeyboardButton("⏱ Установить время сбора", callback_data=f"set_dur_{chat_id}"),
-            types.InlineKeyboardButton("🌍 Выбрать часовой пояс", callback_data=f"set_tz_{chat_id}"),
-            types.InlineKeyboardButton("🔙 К списку групп", callback_data="set_back_list")
-        )
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_dur_'))
     def ask_duration(call):
@@ -273,3 +260,14 @@ def register_settings_handlers(bot, user_sessions):
             show_exceptions_menu(call.message, c_id, bot)
         else:
             bot.answer_callback_query(call.id, "⚠️ Ошибка удаления")
+    
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('add_ex_mode_'))
+    def set_add_exception_mode(call):
+        chat_id = call.data.replace('add_ex_mode_', '')
+        bot.answer_callback_query(call.id)
+        
+        markup_reply = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup_reply.add("❌ Отмена")
+
+        msg = bot.send_message(call.message.chat.id, "Отправьте username пользователя (без @), которого нужно добавить в исключения:\nДля выхода нажмите 'Отмена'.", reply_markup=markup_reply)
+        bot.register_next_step_handler(msg, process_exception_input, chat_id)

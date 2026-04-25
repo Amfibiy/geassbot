@@ -1,6 +1,7 @@
 from database.mongo import load_history_for_chat, save_user_id, save_known_group
 from utils.validators import validate_date
-from .list_functions import show_result_by_date, show_menu_periods_in_ls
+from list_functions import show_result_by_date, show_menu_periods_in_ls
+from collection_functions import handle_join # НОВЫЙ ИМПОРТ ДЛЯ СБОРОВ
 
 def handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions):
     try:
@@ -54,6 +55,11 @@ def handle_private_text(message, bot, active_collections, test_collection, known
             bot.reply_to(message, "✍️ Используйте формат: ДД-ММ-ГГГГ - ДД-ММ-ГГГГ")
 
 def register_callbacks(bot, active_collections, test_collection, known_groups, user_sessions):
+
+    @bot.callback_query_handler(func=lambda call: call.data == "join_collection")
+    def callback_join(call):
+        handle_join(call, bot, active_collections, test_collection)
+
     @bot.message_handler(func=lambda m: m.chat.type in ['group', 'supergroup'])
     def group_msg(message):
         handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions)
