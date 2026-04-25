@@ -1,7 +1,7 @@
 from database.mongo import load_history_for_chat, save_user_id, save_known_group
 from utils.validators import validate_date
-from list_functions import show_result_by_date, show_menu_periods_in_ls
-from collection_functions import handle_join # НОВЫЙ ИМПОРТ ДЛЯ СБОРОВ
+from .list_functions import show_result_by_date, show_menu_periods_in_ls
+from .collection_functions import handle_join 
 
 def handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions):
     try:

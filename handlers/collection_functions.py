@@ -1,6 +1,4 @@
 import time
-import math
-import random
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.mongo import (
     get_all_members_ids, get_combined_settings, save_known_group, 
