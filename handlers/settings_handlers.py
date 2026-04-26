@@ -11,6 +11,23 @@ from database.mongo import (
     remove_from_exceptions)
 
 def register_settings_handlers(bot, user_sessions):
+    def is_cancelled(message):
+        if message.text == "❌ Отмена":
+            user_id = message.from_user.id
+            if user_id in user_sessions:
+                user_sessions[user_id]['step'] = None
+            bot.send_message(
+                message.chat.id, 
+                "🏠 Действие отменено.", 
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+            return True
+        return False
+    
+    def get_cancel_kbd():
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("❌ Отмена")
+        return markup
     
     @bot.message_handler(commands=['settings'])
     def cmd_settings(message):
@@ -87,26 +104,17 @@ def register_settings_handlers(bot, user_sessions):
         bot.register_next_step_handler(msg, process_duration_input, chat_id)
 
     def process_duration_input(message, chat_id):
-        if message.text and message.text.lower() in ['отмена', '/cancel', '/stop']:
-            bot.reply_to(message, "🚫 Ввод отменен.")
+        if is_cancelled(message):
             return
 
-        if not message.text or not message.text.isdigit():
-            msg = bot.reply_to(message, "❌ Ошибка! Введите <b>число минут</b> цифрами (например, 60).\nДля отмены напишите 'отмена'.", parse_mode="HTML")
-            bot.register_next_step_handler(msg, process_duration_input, chat_id)
-            return
-    
-        val = int(message.text)
-        if val < 1 or val > 1440:
-            msg = bot.reply_to(message, "⚠️ Время должно быть от 1 до 1440 минут (24 часа). Попробуйте еще раз:")
+        if not message.text.isdigit():
+            msg = bot.send_message(message.chat.id, "⚠️ Введите число (минуты):", reply_markup=get_cancel_kbd())
             bot.register_next_step_handler(msg, process_duration_input, chat_id)
             return
 
-        update_group_duration(chat_id, val)
-    
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🔙 Назад к настройкам", callback_data=f"set_main_{chat_id}"))
-        bot.send_message(message.chat.id, f"✅ Время сбора обновлено: <b>{val} мин.</b>", reply_markup=markup, parse_mode="HTML")
+        new_dur = int(message.text) * 60
+        update_group_duration(chat_id, new_dur)
+        bot.send_message(message.chat.id, f"✅ Время сбора изменено на {message.text} мин.", reply_markup=types.ReplyKeyboardRemove())
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_tz_'))
     def select_tz_buttons(call):
@@ -172,23 +180,17 @@ def register_settings_handlers(bot, user_sessions):
         bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="HTML")
 
     def process_exception_input(message, chat_id):
-        remove_markup = types.ReplyKeyboardRemove()
-        if message.text == "❌ Отмена":
-            bot.send_message(message.chat.id, "Ввод отменен. Возвращаемся в меню.", reply_markup=remove_markup)
+        if is_cancelled(message):
             return
+
+        username = message.text.strip().replace("@", "")
+        success, res_msg = add_to_exceptions(chat_id, username)
         
-        if message.text and message.text.startswith('/'):
-            bot.send_message(message.chat.id, "Ввод прерван командой.", reply_markup=remove_markup)
-            return
-
-        username = message.text.strip()
-        success, result_msg = add_to_exceptions(chat_id, username)
-
-        markup_inline = types.InlineKeyboardMarkup()
-        markup_inline.add(types.InlineKeyboardButton("🔙 Назад к списку", callback_data=f"set_ex_{chat_id}"))
-
-        bot.send_message(message.chat.id, result_msg, reply_markup=remove_markup)
-        bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup_inline)
+        if success:
+            bot.send_message(message.chat.id, res_msg, reply_markup=types.ReplyKeyboardRemove())
+        else:
+            msg = bot.send_message(message.chat.id, f"❌ {res_msg}\nПопробуйте еще раз или нажмите Отмена.", reply_markup=get_cancel_kbd())
+            bot.register_next_step_handler(msg, process_exception_input, chat_id)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clear_ex_'))
     def handle_clear_exceptions(call):

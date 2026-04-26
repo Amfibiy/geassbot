@@ -1,7 +1,8 @@
 from database.mongo import load_history_for_chat, save_user_id, save_known_group
 from utils.validators import validate_date
 from .list_functions import show_result_by_date, show_menu_periods_in_ls
-from .collection_functions import handle_join 
+from .collection_functions import handle_join
+from telebot import types 
 
 def handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions):
     try:
@@ -23,6 +24,15 @@ def handle_group_message(message, bot, active_collections, test_collection, know
 def handle_private_text(message, bot, active_collections, test_collection, known_groups, user_sessions):
     user_id = message.from_user.id
     session = user_sessions.get(user_id)
+    if not session: return
+    if message.text == "❌ Отмена":
+        session['step'] = None
+        bot.send_message(
+            message.chat.id, 
+            "🏠 Действие отменено.", 
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+        return
     
     if session and session.get('step') == "input_date_range":
         text = message.text.strip()

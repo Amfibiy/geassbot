@@ -18,6 +18,11 @@ def is_potential_group_id(text):
     t = text.strip()
     return (t.startswith('-') and t[1:].isdigit()) or t.isdigit()
 
+def get_cancel_kbd():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add("❌ Отмена")
+    return markup
+
 def register_list_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
     @bot.message_handler(commands=['list'])
@@ -207,8 +212,25 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         v_type, b_ts, e_ts, label = data[1], data[2], data[3], data[4]
         
         session['list_last_menu_cb'] = call.data
-        
-        if v_type == 'mview':
+        if v_type == 'custom_interval':
+            session['step'] = 'list_input_date'
+            bot.send_message(
+                call.message.chat.id, 
+                "Режим ввода активирован. Нажмите кнопку ниже для выхода:", 
+                reply_markup=get_cancel_kbd()
+            )
+            
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
+            bot.edit_message_text(
+                "✍️ <b>Введите период</b> (ДД.ММ.ГГ - ДД.ММ.ГГ):", 
+                call.message.chat.id, 
+                call.message.message_id, 
+                reply_markup=markup, 
+                parse_mode="HTML"
+            )
+            
+        elif v_type == 'mview':
             session['list_parent_mview'] = call.data
             show_weeks_of_month_menu(call, bot, b_ts, e_ts, label, back_cb="list_view_all")
         elif v_type == 'wview':

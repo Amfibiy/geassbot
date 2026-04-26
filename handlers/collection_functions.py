@@ -1,4 +1,5 @@
 import time
+from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.mongo import (
     get_all_members_ids, get_combined_settings, save_known_group, 
@@ -15,7 +16,6 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
     chat_id = message.chat.id
     admin_id = message.from_user.id
 
-    # 1. Проверка на активный сбор
     if chat_id in collection_dict:
         col = collection_dict[chat_id]
         elapsed_min = int((time.time() - col['start_time']) // 60)
@@ -58,10 +58,9 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
     if current_chunk:
         tag_chunks.append(" ".join(current_chunk))
 
-    all_templates = precursor_templates + [main_template]
     sent_msg = None
-
-    for i, template in enumerate(all_templates):
+    
+    for i, template in enumerate(precursor_templates):
         tags_string = f"\n\n{tag_chunks[i]}\n" if i < len(tag_chunks) else ""
         
         try:
@@ -69,17 +68,26 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
                 duration=duration_min,
                 tags=tags_string
             )
-            
-            markup = None
-            if i == len(all_templates) - 1:
-                markup = InlineKeyboardMarkup()
-                markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
-
-            sent_msg = bot.send_message(chat_id, full_text, reply_markup=markup, parse_mode="HTML")
-            time.sleep(0.5) 
-            
+            bot.send_message(chat_id, full_text, parse_mode="HTML")
+            time.sleep(0.4) 
         except Exception as e:
-            print(f"❌ Ошибка отправки сообщения {i}: {e}")
+            print(f"❌ Ошибка отправки прекурсора {i}: {e}")
+    remaining_tags = ""
+    if len(tag_chunks) > len(precursor_templates):
+        remaining_tags = "\n\n" + "\n".join(tag_chunks[len(precursor_templates):]) + "\n"
+
+    try:
+        main_text = main_template.format(
+            duration=duration_min,
+            tags=remaining_tags
+        )
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
+
+        sent_msg = bot.send_message(chat_id, main_text, reply_markup=markup, parse_mode="HTML")
+    except Exception as e:
+        print(f"❌ Ошибка отправки главного сообщения: {e}")
 
     if sent_msg:
         collection_dict[chat_id] = {
@@ -130,15 +138,15 @@ def start_test_collection(message, bot, active_collections, test_collection, kno
 
 def handle_join(call, bot, active_collections, test_collection):
     chat_id = call.message.chat.id
-    col = active_collections.get(chat_id) or test_collection.get(chat_id)
+    col = active_collections.get(int(chat_id)) or test_collection.get(int(chat_id))
     
     if not col:
-        bot.answer_callback_query(call.id, "❌ Сбор уже завершен.", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Сбор уже завершен или не найден.", show_alert=True)
         return
 
     user = call.from_user
-    if any(p['id'] == user.id for p in col['participants']):
-        bot.answer_callback_query(call.id, "✅ Вы уже записаны!")
+    if any(p.get('id') == user.id for p in col['participants']):
+        bot.answer_callback_query(call.id, "✅ Вы уже в деле!")
         return
 
     col['participants'].append({
@@ -147,20 +155,14 @@ def handle_join(call, bot, active_collections, test_collection):
         'name': user.first_name
     })
     
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(
-        f"✅ Присоединиться ({len(col['participants'])})", 
-        callback_data="join_collection"
-    ))
+    count = len(col['participants'])
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(f"✅ Присоединиться ({count})", callback_data="join_collection"))
     
     try:
-        bot.edit_message_reply_markup(
-            chat_id=chat_id, 
-            message_id=col['main_message_id'], 
-            reply_markup=markup
-        )
+        bot.edit_message_reply_markup(chat_id, col['main_message_id'], reply_markup=markup)
         bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы в списке!")
-    except Exception as e:
+    except Exception:
         bot.answer_callback_query(call.id, "✅ Готово!")
 
 def stop_collection_automatically(chat_id, bot, coll_dict, is_test):

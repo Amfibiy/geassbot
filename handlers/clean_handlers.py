@@ -8,6 +8,11 @@ from .clean_functions import (
     show_records_for_cleaning, ask_confirm_clean, execute_delete
 )
 
+def get_cancel_kbd():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add("❌ Отмена")
+    return markup
+
 def register_clean_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
     @bot.message_handler(commands=['clean'])
@@ -180,7 +185,25 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         v_type, b_ts, e_ts, label = data[1], data[2], data[3], data[4]
         
         session['clean_last_menu_cb'] = call.data
-        
+        if v_type == 'custom_interval':
+            session['step'] = 'clean_input_date'
+            
+            bot.send_message(
+                call.message.chat.id, 
+                "Режим ввода активирован. Нажмите кнопку ниже для выхода:", 
+                reply_markup=get_cancel_kbd()
+            )
+            
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="clean_back_to_periods"))
+            bot.edit_message_text(
+                "✍️ <b>Введите период для ОЧИСТКИ</b> (ДД.ММ.ГГ - ДД.ММ.ГГ):", 
+                call.message.chat.id, 
+                call.message.message_id, 
+                reply_markup=markup, 
+                parse_mode="HTML"
+            )
+
         if v_type == 'mview':
             session['clean_parent_mview'] = call.data
             show_clean_weeks_menu(call, bot, b_ts, e_ts, label, back_cb="clean_view_all_time")
