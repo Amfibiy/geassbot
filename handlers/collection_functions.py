@@ -2,14 +2,15 @@ import time
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.mongo import (
-    get_all_members_ids, get_combined_settings, save_known_group, 
-    save_user_id, save_history_record, get_group_member_count
+    get_all_members_ids, 
+    get_combined_settings, 
+    save_known_group, 
+    save_history_record
 )
 from utils.messages import (
     START_MESSAGES_MANDATORY, TEST_MESSAGES, COLLECT_BODY_ACTIVE, 
     COLLECT_ALREADY_RUNNING, TEST_BODY_ACTIVE
 )
-
 from config.settings import EMOJI_LIST, TAGS_CHUNK_SIZE
 
 def _start_generic_collection(message, bot, collection_dict, is_test=False):
@@ -18,31 +19,25 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
 
     if chat_id in collection_dict:
         col = collection_dict[chat_id]
-        elapsed_min = int((time.time() - col['start_time']) // 60)
-        total_min = col['duration'] // 60
-        rem_min = max(0, total_min - elapsed_min)
+        elapsed = int(time.time() - col['start_time'])
+        total = col['duration']
+        rem = max(0, total - elapsed)
         
-        try:
-            bot.send_message(chat_id, COLLECT_ALREADY_RUNNING.format(
-                count=len(col['participants']),
-                elapsed=elapsed_min,
-                remaining=f"{rem_min} мин"
-            ), parse_mode="HTML")
-        except:
-            bot.send_message(chat_id, "⚠️ Сбор уже запущен!")
+        bot.send_message(chat_id, COLLECT_ALREADY_RUNNING.format(
+            count=len(col['participants']),
+            elapsed=elapsed // 60,
+            remaining=f"{rem // 60:02d}:{rem % 60:02d}"
+        ), parse_mode="HTML")
         return
 
     member_ids = list(set(get_all_members_ids(chat_id)))
     bot_me = bot.get_me()
-    if bot_me.id in member_ids:
-        member_ids.remove(bot_me.id)
+    if bot_me.id in member_ids: member_ids.remove(bot_me.id)
 
     save_known_group(chat_id, message.chat.title, member_count=len(member_ids))
-    if not message.from_user.is_bot:
-        save_user_id(chat_id, admin_id, message.from_user.username)
-
+    
     configs = get_combined_settings(chat_id, admin_id)
-    duration_min = configs['duration'] // 60
+    duration_sec = configs['duration'] 
     
     precursor_templates = TEST_MESSAGES if is_test else START_MESSAGES_MANDATORY
     main_template = TEST_BODY_ACTIVE if is_test else COLLECT_BODY_ACTIVE
@@ -58,48 +53,49 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
     if current_chunk:
         tag_chunks.append(" ".join(current_chunk))
 
-    sent_msg = None
-    
+    msg_ids_to_delete = [] 
+
     for i, template in enumerate(precursor_templates):
         tags_string = f"\n\n{tag_chunks[i]}\n" if i < len(tag_chunks) else ""
-        
         try:
-            full_text = template.format(
-                duration=duration_min,
+            msg = bot.send_message(chat_id, template.format(
+                duration=duration_sec // 60,
                 tags=tags_string
-            )
-            bot.send_message(chat_id, full_text, parse_mode="HTML")
-            time.sleep(0.4) 
-        except Exception as e:
-            print(f"❌ Ошибка отправки прекурсора {i}: {e}")
+            ), parse_mode="HTML")
+            msg_ids_to_delete.append(msg.message_id) 
+            time.sleep(0.5) 
+        except: pass
+
     remaining_tags = ""
     if len(tag_chunks) > len(precursor_templates):
         remaining_tags = "\n\n" + "\n".join(tag_chunks[len(precursor_templates):]) + "\n"
 
     try:
         main_text = main_template.format(
-            duration=duration_min,
-            tags=remaining_tags
+            duration=duration_sec // 60,
+            tags=remaining_tags,
+            count=0
         )
-        
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("✅ Присоединиться (0)", callback_data="join_collection"))
-
-        sent_msg = bot.send_message(chat_id, main_text, reply_markup=markup, parse_mode="HTML")
-    except Exception as e:
-        print(f"❌ Ошибка отправки главного сообщения: {e}")
-
-    if sent_msg:
+        
+        main_msg = bot.send_message(chat_id, main_text, reply_markup=markup, parse_mode="HTML")
+        msg_ids_to_delete.append(main_msg.message_id) 
+        
         collection_dict[chat_id] = {
-            'main_message_id': sent_msg.message_id,
             'chat_id': chat_id,
-            'title': message.chat.title,
+            'title': message.chat.title, 
+            'main_message_id': main_msg.message_id,
+            'messages_to_delete': msg_ids_to_delete, 
             'start_time': time.time(),
-            'duration': configs['duration'],
+            'duration': duration_sec,
             'participants': [],
-            'admin_id': admin_id,
-            'is_test': is_test
+            'is_test': is_test,
+            'remaining_tags': remaining_tags,
+            'main_template': main_template
         }
+    except Exception as e:
+        print(f"Ошибка старта: {e}")
 
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = message.chat.id
@@ -109,6 +105,12 @@ def stop_collection(message, bot, active_collections, test_collection, known_gro
     if not col:
         bot.reply_to(message, "❌ Нет активного сбора.")
         return
+
+    for msg_id in col.get('messages_to_delete', []):
+        try:
+            bot.delete_message(chat_id, msg_id)
+        except Exception:
+            pass 
 
     quantity = len(col['participants'])
     status_icon = "🎉" if quantity > 0 else "😔"
@@ -137,16 +139,16 @@ def start_test_collection(message, bot, active_collections, test_collection, kno
     _start_generic_collection(message, bot, test_collection, is_test=True)
 
 def handle_join(call, bot, active_collections, test_collection):
-    chat_id = call.message.chat.id
-    col = active_collections.get(int(chat_id)) or test_collection.get(int(chat_id))
+    chat_id = int(call.message.chat.id)
+    col = active_collections.get(chat_id) or test_collection.get(chat_id)
     
     if not col:
-        bot.answer_callback_query(call.id, "❌ Сбор уже завершен или не найден.", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Сбора нет.", show_alert=True)
         return
 
     user = call.from_user
     if any(p.get('id') == user.id for p in col['participants']):
-        bot.answer_callback_query(call.id, "✅ Вы уже в деле!")
+        bot.answer_callback_query(call.id, "✅ Вы уже в списке!")
         return
 
     col['participants'].append({
@@ -156,18 +158,40 @@ def handle_join(call, bot, active_collections, test_collection):
     })
     
     count = len(col['participants'])
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton(f"✅ Присоединиться ({count})", callback_data="join_collection"))
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(f"✅ Присоединиться ({count})", callback_data="join_collection"))
     
     try:
-        bot.edit_message_reply_markup(chat_id, col['main_message_id'], reply_markup=markup)
-        bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, вы в списке!")
-    except Exception:
-        bot.answer_callback_query(call.id, "✅ Готово!")
+        new_text = col['main_template'].format(
+            duration=col['duration'] // 60,
+            tags=col['remaining_tags'],
+            count=count
+        )
+        bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=col['main_message_id'],
+            text=new_text,
+            reply_markup=markup,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        if "message is not modified" not in str(e).lower():
+            print(f"Ошибка обновления текста: {e}")
+        try:
+            bot.edit_message_reply_markup(chat_id, col['main_message_id'], reply_markup=markup)
+        except: pass
+
+    bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, ты в деле!")
 
 def stop_collection_automatically(chat_id, bot, coll_dict, is_test):
     col = coll_dict.pop(int(chat_id), None)
     if not col: return
+
+    for msg_id in col.get('messages_to_delete', []):
+        try:
+            bot.delete_message(chat_id, msg_id)
+        except Exception:
+            pass 
 
     quantity = len(col['participants'])
     final_text = (

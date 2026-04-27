@@ -1,5 +1,9 @@
 from telebot import types
-from utils.helpers import get_admin_groups
+from utils.helpers import (
+    get_admin_groups,
+    get_cancel_kbd, 
+    check_cancellation)
+
 from database.mongo import (
     update_group_duration, 
     update_admin_timezone, 
@@ -11,24 +15,6 @@ from database.mongo import (
     remove_from_exceptions)
 
 def register_settings_handlers(bot, user_sessions):
-    def is_cancelled(message):
-        if message.text == "❌ Отмена":
-            user_id = message.from_user.id
-            if user_id in user_sessions:
-                user_sessions[user_id]['step'] = None
-            bot.send_message(
-                message.chat.id, 
-                "🏠 Действие отменено.", 
-                reply_markup=types.ReplyKeyboardRemove()
-            )
-            return True
-        return False
-    
-    def get_cancel_kbd():
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        markup.add("❌ Отмена")
-        return markup
-    
     @bot.message_handler(commands=['settings'])
     def cmd_settings(message):
         if message.chat.type != 'private': return
@@ -104,8 +90,7 @@ def register_settings_handlers(bot, user_sessions):
         bot.register_next_step_handler(msg, process_duration_input, chat_id)
 
     def process_duration_input(message, chat_id):
-        if is_cancelled(message):
-            return
+        if check_cancellation(message, bot, user_sessions): return
 
         if not message.text.isdigit():
             msg = bot.send_message(message.chat.id, "⚠️ Введите число (минуты):", reply_markup=get_cancel_kbd())
@@ -180,8 +165,7 @@ def register_settings_handlers(bot, user_sessions):
         bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="HTML")
 
     def process_exception_input(message, chat_id):
-        if is_cancelled(message):
-            return
+        if check_cancellation(message, bot, user_sessions): return
 
         username = message.text.strip().replace("@", "")
         success, res_msg = add_to_exceptions(chat_id, username)
@@ -268,8 +252,9 @@ def register_settings_handlers(bot, user_sessions):
         chat_id = call.data.replace('add_ex_mode_', '')
         bot.answer_callback_query(call.id)
         
-        markup_reply = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        markup_reply.add("❌ Отмена")
-
-        msg = bot.send_message(call.message.chat.id, "Отправьте username пользователя (без @), которого нужно добавить в исключения:\nДля выхода нажмите 'Отмена'.", reply_markup=markup_reply)
+        msg = bot.send_message(
+            call.message.chat.id, 
+            "Отправьте username пользователя (без @), которого нужно добавить в исключения:", 
+            reply_markup=get_cancel_kbd()
+        )
         bot.register_next_step_handler(msg, process_exception_input, chat_id)

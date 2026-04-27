@@ -1,12 +1,7 @@
 import datetime
 from telebot import types
-from database.mongo import load_history_for_chat,get_combined_settings
-from utils.helpers import get_admin_groups,get_localized_timestamps
-
-def escape_html(text):
-    if not text: 
-        return ""
-    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+from database.mongo import load_history_for_chat
+from utils.helpers import get_admin_groups,escape_html
 
 def show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions):
     admin_groups = get_admin_groups(message.from_user.id, bot)
@@ -31,35 +26,36 @@ def show_participants_list(message, bot, active_collections, test_collection, kn
 
     text += "\n👇 <b>Выберите группу кнопкой или просто отправьте её ID сообщением:</b>"
     
+    chat_id = message.chat.id if hasattr(message, 'chat') else message.message.chat.id
     if hasattr(message, 'message_id'):
-        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
     else:
-        bot.edit_message_text(text, message.message.chat.id, message.message.message_id, reply_markup=markup, parse_mode="HTML")
+        bot.edit_message_text(text, chat_id, message.message.message_id, reply_markup=markup, parse_mode="HTML")
 
 def show_menu_periods_in_ls(message_or_call, session, bot):
-    chat_id = session.get('list_chat_id')
-    admin_id = message_or_call.from_user.id
-    configs = get_combined_settings(chat_id, admin_id)
+    chat = message_or_call.message.chat if hasattr(message_or_call, 'message') else message_or_call.chat
     
-    t_b, t_e = get_localized_timestamps(configs['timezone'], "today")
-    y_b, y_e = get_localized_timestamps(configs['timezone'], "yesterday")
+    markup = types.InlineKeyboardMarkup()
+    markup.row(
+        types.InlineKeyboardButton("🌅 Сегодня", callback_data="list_view_today"),
+        types.InlineKeyboardButton("📅 Вчера", callback_data="list_view_yesterday")
+    )
+    markup.row(
+        types.InlineKeyboardButton("🗓 Неделя", callback_data="list_view_week"),
+        types.InlineKeyboardButton("📆 Месяц", callback_data="list_view_month")
+    )
+    markup.row(types.InlineKeyboardButton("♾️ Всё время", callback_data="list_view_all"))
+    markup.row(types.InlineKeyboardButton("⌨️ Ввести даты вручную", callback_data="list_view_manual"))
+    markup.row(types.InlineKeyboardButton("🔙 Назад к группам", callback_data="list_back_to_groups"))
 
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("📅 Сегодня", callback_data=f"list_period_{t_b}_{t_e}_Сегодня"),
-        types.InlineKeyboardButton("🗓 Вчера", callback_data=f"list_period_{y_b}_{y_e}_Вчера")
-    )
-    markup.add(
-        types.InlineKeyboardButton("📊 За все время", callback_data="list_view_all_time"),
-        types.InlineKeyboardButton("🔍 Выбрать период", callback_data="list_custom_period")
-    )
-    markup.add(types.InlineKeyboardButton("🔙 К списку групп", callback_data="list_back_to_groups"))
-    
-    text = f"📅 <b>Выберите период для группы:</b> <code>{chat_id}</code>"
+    chat_id = session.get('list_chat_id')
+    name_group = escape_html(session.get('name_group', f"Группа {chat_id}"))
+    text = f"📅 <b>Выберите период для:</b>\n{name_group}"
+
     if hasattr(message_or_call, 'message'):
-        bot.edit_message_text(text, message_or_call.message.chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
+        bot.edit_message_text(text, chat.id, message_or_call.message.message_id, reply_markup=markup, parse_mode="HTML")
     else:
-        bot.send_message(message_or_call.chat.id, text, reply_markup=markup, parse_mode="HTML")
+        bot.send_message(chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, session, bot, back_cb="list_back_to_periods"):
     records = load_history_for_chat(chat_id, float(begin_ts), float(end_ts))
@@ -109,6 +105,7 @@ def show_all_time_menu(call, session, bot):
     
     buttons = []
     for i in range(12):
+        # Логика смещения по месяцам
         f_day = (now.replace(day=1) - datetime.timedelta(days=i*31)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         if f_day.month == 12:
             next_m = f_day.replace(year=f_day.year + 1, month=1)
@@ -122,7 +119,7 @@ def show_all_time_menu(call, session, bot):
     markup.add(*buttons)
     markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))
     bot.edit_message_text("📂 <b>Архив по месяцам:</b>", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
-    
+
 def show_weeks_of_month_menu(call, bot, begin_ts, end_ts, month_label, back_cb="list_back_to_periods"):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton(f"📊 Весь месяц ({month_label})", callback_data=f"list_period_{begin_ts}_{end_ts}_Месяц {month_label}"))
@@ -161,23 +158,22 @@ def show_days_of_week_menu(call, bot, begin_ts, end_ts, week_label, back_cb="lis
     markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
     bot.edit_message_text(f"📅 Дни недели (<b>{week_label}</b>):", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
 
-def show_hours_of_day_menu(call, bot, begin_ts, end_ts, day_label, chat_id, admin_id, back_cb="list_back_to_periods"):
-    configs = get_combined_settings(chat_id, admin_id)
-    start_dt_utc = datetime.datetime.fromtimestamp(int(float(begin_ts)))
-    
+def show_hours_of_day_menu(call, bot, begin_ts, end_ts, day_label, back_cb="list_back_to_periods"):
     markup = types.InlineKeyboardMarkup(row_width=3)
     markup.add(types.InlineKeyboardButton(f"📊 Весь день ({day_label})", callback_data=f"list_period_{begin_ts}_{end_ts}_{day_label}"))
+    start_dt_utc = datetime.datetime.fromtimestamp(int(float(begin_ts)), datetime.timezone.utc)
     
     btns = []
     for h in range(0, 24, 3):
-        h_start_utc = start_dt_utc + datetime.timedelta(hours=h)
-        h_end_utc = h_start_utc + datetime.timedelta(hours=2, minutes=59, seconds=59)
-        label = f"{h:02d}:00 - {h+2:02d}:59"
+        h_start = start_dt_utc + datetime.timedelta(hours=h)
+        h_end = h_start + datetime.timedelta(hours=2, minutes=59, seconds=59)
+
+        tr = f"{h:02d}:00-{h+2:02d}:59"
         btns.append(types.InlineKeyboardButton(
-            label, 
-            callback_data=f"list_period_{int(h_start_utc.timestamp())}_{int(h_end_utc.timestamp())}_{day_label} {h:02d}h"
+            tr, 
+            callback_data=f"list_period_{int(h_start.timestamp())}_{int(h_end.timestamp())}_{day_label} {tr}"
         ))
     
     markup.add(*btns)
     markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=back_cb))
-    bot.edit_message_text(f"⏳ Выберите время (<b>{day_label}</b>):", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")
+    bot.edit_message_text(f"🕒 Время за <b>{day_label}</b> (локальное):", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="HTML")

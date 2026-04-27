@@ -73,15 +73,15 @@ def load_history_for_chat(chat_id, begin_ts, end_ts):
         }
     return list(history_col.find(query).sort('date', -1))
 
-def delete_history_records(chat_id, period_type, *args):
-    now = datetime.datetime.now()
+def delete_history_records(chat_id, begin_ts=None, end_ts=None):
     query = {'chat_id': int(chat_id)}
     
-    if period_type == 'today':
-        query['date'] = {'$gte': now.replace(hour=0, minute=0, second=0, microsecond=0)}
-    elif period_type == '7days':
-        query['date'] = {'$gte': now - datetime.timedelta(days=7)}
-    
+    if begin_ts and end_ts:
+        query['date'] = {
+            '$gte': datetime.datetime.fromtimestamp(begin_ts),
+            '$lte': datetime.datetime.fromtimestamp(end_ts)
+        }
+        
     history_col.delete_many(query)
 
 def clear_all_history():

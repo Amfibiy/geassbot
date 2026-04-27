@@ -1,4 +1,4 @@
-import logging
+from telebot import types
 import datetime
 from database.mongo import get_known_groups
 
@@ -54,17 +54,47 @@ def get_tz_offset_hours(tz_string):
 
 def get_localized_timestamps(tz_string, period="today"):
     offset = get_tz_offset_hours(tz_string)
-    now_utc = datetime.datetime.utcnow()
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
     now_local = now_utc + datetime.timedelta(hours=offset)
     
     if period == "today":
         start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_local = now_local
+        end_local = start_local.replace(hour=23, minute=59, second=59)
     elif period == "yesterday":
         start_local = (now_local - datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         end_local = start_local.replace(hour=23, minute=59, second=59)
-    
+    elif period == "week":
+        start_local = (now_local - datetime.timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = now_local.replace(hour=23, minute=59, second=59)
+    elif period == "month":
+        start_local = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_local = now_local.replace(hour=23, minute=59, second=59)
+    else:
+        return 0, int(now_utc.timestamp())
+
     start_utc = start_local - datetime.timedelta(hours=offset)
     end_utc = end_local - datetime.timedelta(hours=offset)
     
     return int(start_utc.timestamp()), int(end_utc.timestamp())
+
+def get_cancel_kbd():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add("❌ Отмена")
+    return markup
+
+def check_cancellation(message, bot, user_sessions):
+    if message.text == "❌ Отмена":
+        user_id = message.from_user.id
+        if user_id in user_sessions:
+            user_sessions[user_id]['step'] = None
+        bot.send_message(
+            message.chat.id, 
+            "🏠 Действие отменено. Возвращаюсь в главное меню.", 
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+        return True
+    return False
+
+def escape_html(text):
+    if not text: return ""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
