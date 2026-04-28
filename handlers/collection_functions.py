@@ -100,11 +100,12 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
 def stop_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
     chat_id = message.chat.id
     col = active_collections.pop(chat_id, None) or test_collection.pop(chat_id, None)
-    is_test = col.get('is_test', False) if col else False
         
     if not col:
         bot.reply_to(message, "❌ Нет активного сбора.")
         return
+
+    is_test = col.get('is_test', False)
 
     for msg_id in col.get('messages_to_delete', []):
         try:
@@ -127,15 +128,9 @@ def stop_collection(message, bot, active_collections, test_collection, known_gro
         save_history_record(col)
 
 def start_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    if message.chat.type == 'private':
-        bot.reply_to(message, "🏰 Команда только для групп.")
-        return
     _start_generic_collection(message, bot, active_collections, is_test=False)
 
 def start_test_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    if message.chat.type == 'private':
-        bot.reply_to(message, "🧪 Команда только для групп.")
-        return
     _start_generic_collection(message, bot, test_collection, is_test=True)
 
 def handle_join(call, bot, active_collections, test_collection):
