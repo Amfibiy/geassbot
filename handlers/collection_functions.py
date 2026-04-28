@@ -13,12 +13,12 @@ from utils.messages import (
 )
 from config.settings import EMOJI_LIST, TAGS_CHUNK_SIZE
 
-def _start_generic_collection(message, bot, collection_dict, is_test=False):
+def _start_generic_collection(message, bot, active_collections, test_collection, is_test=False):
     chat_id = message.chat.id
     admin_id = message.from_user.id
-
-    if chat_id in collection_dict:
-        col = collection_dict[chat_id]
+    col = active_collections.get(chat_id) or test_collection.get(chat_id)
+    
+    if col:
         elapsed = int(time.time() - col['start_time'])
         total = col['duration']
         rem = max(0, total - elapsed)
@@ -29,6 +29,8 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
             remaining=f"{rem // 60:02d}:{rem % 60:02d}"
         ), parse_mode="HTML")
         return
+
+    collection_dict = test_collection if is_test else active_collections
 
     member_ids = list(set(get_all_members_ids(chat_id)))
     bot_me = bot.get_me()
@@ -63,7 +65,7 @@ def _start_generic_collection(message, bot, collection_dict, is_test=False):
                 tags=tags_string
             ), parse_mode="HTML")
             msg_ids_to_delete.append(msg.message_id) 
-            time.sleep(0.5) 
+            time.sleep(0.3) 
         except: pass
 
     remaining_tags = ""
@@ -135,16 +137,15 @@ def start_test_collection(message, bot, active_collections, test_collection, kno
 
 def handle_join(call, bot, active_collections, test_collection):
     chat_id = int(call.message.chat.id)
+    user = call.from_user
+    
     col = active_collections.get(chat_id) or test_collection.get(chat_id)
     
     if not col:
-        bot.answer_callback_query(call.id, "❌ Сбора нет или он уже завершен.", show_alert=True)
-        return
+        return bot.answer_callback_query(call.id, "❌ Сбор завершен.", show_alert=True)
 
-    user = call.from_user
     if any(p.get('id') == user.id for p in col['participants']):
-        bot.answer_callback_query(call.id, "✅ Вы уже в списке!")
-        return
+        return bot.answer_callback_query(call.id, "✅ Ты уже в списке!")
 
     col['participants'].append({
         'id': user.id, 
@@ -171,10 +172,7 @@ def handle_join(call, bot, active_collections, test_collection):
         )
     except Exception as e:
         if "message is not modified" not in str(e).lower():
-            print(f"Ошибка обновления текста: {e}")
-        try:
             bot.edit_message_reply_markup(chat_id, col['main_message_id'], reply_markup=markup)
-        except: pass
 
     bot.answer_callback_query(call.id, f"⚔️ {user.first_name}, ты в деле!")
 

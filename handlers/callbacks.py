@@ -66,10 +66,6 @@ def handle_private_text(message, bot, active_collections, test_collection, known
 
 def register_callbacks(bot, active_collections, test_collection, known_groups, user_sessions):
 
-    @bot.callback_query_handler(func=lambda call: call.data == "join_collection")
-    def callback_join(call):
-        handle_join(call, bot, active_collections, test_collection)
-
     @bot.message_handler(func=lambda m: m.chat.type in ['group', 'supergroup'])
     def group_msg(message):
         handle_group_message(message, bot, active_collections, test_collection, known_groups, user_sessions)
