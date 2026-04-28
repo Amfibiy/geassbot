@@ -204,19 +204,19 @@ def register_settings_handlers(bot, user_sessions):
     @bot.callback_query_handler(func=lambda call: call.data.startswith('save_dur_'))
     def save_duration_final(call):
         data = call.data.replace('save_dur_', '').split(':')
-        duration_min = data[0]
+        duration_min = int(data[0]) 
         chat_id = data[1]
-        
-        update_group_duration(chat_id, duration_min)
-        
+        duration_sec = duration_min * 60 
+        update_group_duration(chat_id, duration_sec)
+    
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔙 Назад к настройкам", callback_data=f"set_main_{chat_id}"))
-        
+    
         bot.edit_message_text(f"✅ Длительность сбора обновлена: <b>{duration_min} мин.</b>", 
-                             call.message.chat.id, 
-                             call.message.message_id, 
-                             reply_markup=markup, 
-                             parse_mode="HTML")
+                         call.message.chat.id, 
+                         call.message.message_id, 
+                         reply_markup=markup, 
+                         parse_mode="HTML")
         
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_ex_'))
     def manage_exceptions(call):
