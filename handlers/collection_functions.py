@@ -30,7 +30,7 @@ def _start_generic_collection(message, bot, active_collections, test_collection,
         ), parse_mode="HTML")
         return
 
-    collection_dict = test_collection if is_test else active_collections
+    target_dict = test_collection if is_test else active_collections
 
     member_ids = list(set(get_all_members_ids(chat_id)))
     bot_me = bot.get_me()
@@ -84,7 +84,7 @@ def _start_generic_collection(message, bot, active_collections, test_collection,
         main_msg = bot.send_message(chat_id, main_text, reply_markup=markup, parse_mode="HTML")
         msg_ids_to_delete.append(main_msg.message_id) 
         
-        collection_dict[chat_id] = {
+        target_dict[chat_id] = {
             'chat_id': chat_id,
             'title': message.chat.title, 
             'main_message_id': main_msg.message_id,
@@ -130,15 +130,14 @@ def stop_collection(message, bot, active_collections, test_collection, known_gro
         save_history_record(col)
 
 def start_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    _start_generic_collection(message, bot, active_collections, is_test=False)
+    _start_generic_collection(message, bot, active_collections, test_collection, is_test=False)
 
 def start_test_collection(message, bot, active_collections, test_collection, known_groups, user_sessions):
-    _start_generic_collection(message, bot, test_collection, is_test=True)
+    _start_generic_collection(message, bot, active_collections, test_collection, is_test=True)
 
 def handle_join(call, bot, active_collections, test_collection):
     chat_id = int(call.message.chat.id)
     user = call.from_user
-    
     col = active_collections.get(chat_id) or test_collection.get(chat_id)
     
     if not col:
