@@ -143,7 +143,7 @@ def handle_join(call, bot, active_collections, test_collection):
     col = active_collections.get(chat_id) or test_collection.get(chat_id)
     
     if not col:
-        bot.answer_callback_query(call.id, "❌ Сбора нет.", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Сбора нет или он уже завершен.", show_alert=True)
         return
 
     user = call.from_user
