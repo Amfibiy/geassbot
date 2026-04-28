@@ -164,9 +164,9 @@ def show_records_for_cleaning(call, bot, chat_id, begin, end, label, user_sessio
     else:
         for rec in history:
             rec_id = str(rec['_id'])
-            dt_str = rec['timestamp'].strftime('%d.%m %H:%M')
+            dt_str = rec['date'].strftime('%d.%m %H:%M')
             count = len(rec.get('participants', []))
-            p_name = escape_html(rec.get('period_name', 'Без названия'))
+            p_name = escape_html(rec.get('title', 'Без названия'))
             
             if confirm_id == rec_id:
                 text += f"⚠️ <b>Удалить: {dt_str} — {p_name}?</b>\n\n"

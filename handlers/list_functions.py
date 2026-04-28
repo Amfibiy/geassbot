@@ -63,7 +63,8 @@ def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, ses
     unique_participants = {}
     for r in records:
         for p in r.get('participants', []):
-            u_id = p.get('user_id')
+            u_id = p.get('id') or p.get('user_id') 
+            
             if u_id and u_id not in unique_participants:
                 unique_participants[u_id] = {
                     'name': p.get('name', 'Аноним'),
