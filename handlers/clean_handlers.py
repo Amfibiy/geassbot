@@ -9,6 +9,11 @@ from .clean_functions import (
     show_records_for_cleaning, ask_confirm_clean, execute_delete
 )
 
+def is_potential_group_id(text):
+    if not text: return False
+    t = text.strip()
+    return (t.startswith('-') and t[1:].isdigit()) or t.isdigit()
+
 def register_clean_handlers(bot, active_collections, test_collection, known_groups, user_sessions):
     
     @bot.message_handler(commands=['clean'])
@@ -16,9 +21,12 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
         if message.chat.type == 'private':
             handle_clean(message, bot, user_sessions)
 
-    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'clean_wait_group_id')
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and 
+                         is_potential_group_id(m.text) and 
+                         user_sessions.get(m.from_user.id, {}).get('step') == 'clean_wait_group_id')
     def handle_text_group_id(message):
-        if check_cancellation(message, bot, user_sessions): return
+        if check_cancellation(message, bot, user_sessions): 
+            return
         
         u_id = message.from_user.id
         group_id = message.text.strip()
@@ -135,12 +143,15 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
 
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'clean_input_date')
     def handle_clean_manual_date(message):
-        if check_cancellation(message, bot, user_sessions): return
-        
         u_id = message.from_user.id
         session = user_sessions.get(u_id)
         if not session:
             bot.reply_to(message, "❌ Сессия истекла. Введите /clean снова.", reply_markup=types.ReplyKeyboardRemove())
+            return
+
+        if check_cancellation(message, bot, user_sessions):
+            session['step'] = 'clean_choice_period'
+            show_clean_periods_menu(message, session, bot)
             return
     
         chat_id = session.get('clean_chat_id')
@@ -162,7 +173,6 @@ def register_clean_handlers(bot, active_collections, test_collection, known_grou
                     return
             except Exception:
                 pass
-
         bot.reply_to(
             message, 
             "❌ <b>Неверный формат!</b>\nИспользуйте: <code>ДД.ММ.ГГ - ДД.ММ.ГГ</code>\nПример: <code>10.04.26 - 12.04.26</code>", 

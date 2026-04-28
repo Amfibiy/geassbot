@@ -103,44 +103,48 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
 
     @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'list_input_date')
     def handle_list_manual_date(message):
-        # Проверка на отмену через кнопку "❌ Отмена"
+        u_id = message.from_user.id
+        session = user_sessions.get(u_id)
+    
+        if not session:
+            return
         if check_cancellation(message, bot, user_sessions):
+            session['step'] = 'list_choice_period'
+            show_menu_periods_in_ls(message, session, bot)
             return
 
-        u_id = message.from_user.id
-        session = user_sessions[u_id]
         chat_id = session.get('list_chat_id')
-        
         raw = message.text.strip().replace(" ", "").replace("-", ".").replace("/", ".")
         parts = raw.split(".")
-        
+    
         if len(parts) >= 6:
             try:
                 date_str1 = f"{parts[0]}.{parts[1]}.{parts[2]}"
                 date_str2 = f"{parts[3]}.{parts[4]}.{parts[5]}"
+            
                 d1 = validate_date(date_str1)
                 d2 = validate_date(date_str2)
-            
+        
                 if d1 and d2:
                     begin = d1.timestamp()
                     end = d2.replace(hour=23, minute=59, second=59).timestamp()
                     p_name = f"{date_str1} — {date_str2}"
-                    
-                    # Убираем клавиатуру отмены при успехе
+                
                     bot.send_message(message.chat.id, "✅ Период принят.", reply_markup=types.ReplyKeyboardRemove())
                     show_result_by_date(message, chat_id, begin, end, p_name, session, bot, back_cb="list_back_to_periods")
+                
                     session['step'] = "list_choice_period"
                     return
             except Exception as e:
                 print(f"Ошибка парсинга даты: {e}")
 
         error_text = (
-            "❌ <b>Неверный формат.</b>\n\n"
-            "Введите две даты слитно через точки:\n"
-            "<code>13.04.26.14.04.26</code>\n\n"
-            "Или через дефис:\n"
-            "<code>13.04.2026 - 14.04.2026</code>"
-        )
+        "❌ <b>Неверный формат.</b>\n\n"
+        "Введите две даты слитно через точки:\n"
+        "<code>13.04.26.14.04.26</code>\n\n"
+        "Или через дефис:\n"
+        "<code>13.04.2026 - 14.04.2026</code>"
+    )
         bot.reply_to(message, error_text, parse_mode="HTML")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_view_'))

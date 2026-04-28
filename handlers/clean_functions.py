@@ -19,6 +19,7 @@ def handle_clean(message, bot, user_sessions, edit=False):
         return
 
     user_sessions[user_id]['step'] = 'clean_wait_group_id'
+    
     text = "🧹 <b>Выберите группу для очистки:</b>\n\n"
     markup = types.InlineKeyboardMarkup()
     
@@ -26,18 +27,17 @@ def handle_clean(message, bot, user_sessions, edit=False):
         title = escape_html(g.get('title', 'Группа'))
         c_id = g.get('chat_id')
         text += f"{i}. <b>{title}</b> (<code>{c_id}</code>)\n"
-        markup.add(types.InlineKeyboardButton(f"{i}. {title}", callback_data=f"clean_group_{c_id}"))
+        markup.add(types.InlineKeyboardButton(text=f"{i}. {title}", callback_data=f"clean_group_{c_id}"))
+
+    text += "\n👇 <b>Выберите группу кнопкой или просто отправьте её ID сообщением:</b>"
     
     if edit:
-        bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="HTML")
+        try:
+            bot.edit_message_text(text, message.chat.id, message.message_id, reply_markup=markup, parse_mode="HTML")
+        except Exception:
+            bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
     else:
         bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
-        bot.send_message(
-            message.chat.id, 
-            "👇 <b>Нажмите на кнопку выше</b>\nили отправьте ID группы (включая минус) вручную:", 
-            reply_markup=get_cancel_kbd(), 
-            parse_mode="HTML"
-        )
 
 def show_clean_periods_menu(call_or_msg, session, bot):
     cid = call_or_msg.message.chat.id if hasattr(call_or_msg, 'message') else call_or_msg.chat.id
