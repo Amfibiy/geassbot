@@ -54,7 +54,6 @@ def _start_generic_collection(message, bot, active_collections, test_collection,
         tag_chunks.append(" ".join(current_chunk))
 
     msg_ids_to_delete = [] 
-
     for i, template in enumerate(precursor_templates):
         tags_string = f"\n\n{tag_chunks[i]}\n" if i < len(tag_chunks) else ""
         try:
@@ -71,8 +70,13 @@ def _start_generic_collection(message, bot, active_collections, test_collection,
         remaining_tags = "\n\n" + "\n".join(tag_chunks[len(precursor_templates):]) + "\n"
 
     try:
+        rem_mins = duration_sec // 60
+        rem_secs = duration_sec % 60
+        remaining_str = f"{rem_mins:02d}:{rem_secs:02d}"
+
         main_text = main_template.format(
-            duration=duration_sec // 60,
+            duration=rem_mins,
+            remaining=remaining_str,
             tags=remaining_tags,
             count=0
         )
@@ -140,9 +144,14 @@ def handle_join(call, bot, active_collections, test_collection):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(f"✅ Присоединиться ({count})", callback_data="join_collection"))
 
+    elapsed = int(time.time() - col['start_time'])
+    rem = max(0, col['duration'] - elapsed)
+    remaining_str = f"{rem // 60:02d}:{rem % 60:02d}"
+
     try:
         new_text = col['main_template'].format(
             duration=col['duration'] // 60,
+            remaining=remaining_str,
             tags=col['remaining_tags'],
             count=count
         )

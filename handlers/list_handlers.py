@@ -23,7 +23,6 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
     @bot.message_handler(commands=['list'])
     def handle_list(message):
         if message.chat.type in ['group', 'supergroup']:
-            # Логика для групп: быстрый статус текущего сбора
             chat_id = message.chat.id
             col = active_collections.get(chat_id) or test_collection.get(chat_id)
             if col:
