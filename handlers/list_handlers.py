@@ -2,7 +2,12 @@ import datetime
 from telebot import types
 from database.mongo import get_group_by_id,get_combined_settings
 from utils.validators import validate_date
-from utils.helpers import get_cancel_kbd, check_cancellation,get_localized_timestamps,get_tz_offset_hours
+from utils.helpers import (get_cancel_kbd, 
+                           check_cancellation,
+                           get_localized_timestamps,
+                           get_tz_offset_hours,
+                           escape_html)
+
 from .list_functions import (
     show_participants_list, 
     show_menu_periods_in_ls, 
@@ -27,20 +32,37 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
             col = active_collections.get(chat_id) or test_collection.get(chat_id)
             if col:
                 count = len(col['participants'])
-                title = col.get('title', 'Сбор').replace('<', '&lt;').replace('>', '&gt;')
+                title = escape_html(col.get('title', 'Сбор'))
+                
                 if count == 0:
                     bot.reply_to(message, f"📋 <b>Статус сбора: {title}</b>\nПока никто не присоединился.", parse_mode="HTML")
                 else:
                     lines = [f"📋 <b>Статус сбора: {title}</b>\nУчастников: {count}\n"]
+                    
                     for i, p in enumerate(col['participants'], 1):
-                        name = p['name'].replace('<', '&lt;').replace('>', '&gt;')
-                        username = f" (@{p['username']})" if p.get('username') else ""
-                        lines.append(f"{i}. {name}{username}")
+                        name = escape_html(p['name'])
+                        u_id = p.get('id') or p.get('user_id')
+                        
+                        custom_label = ""
+                        if u_id:
+                            try:
+                                member = bot.get_chat_member(message.chat.id, u_id)
+                                if hasattr(member, 'custom_title') and member.custom_title:
+                                    custom_label = f" ({escape_html(member.custom_title)})"
+                            except Exception:
+                                pass
+
+                        if u_id:
+                            mention = f'<a href="tg://user?id={u_id}">{name}</a>'
+                        else:
+                            mention = name
+                        
+                        lines.append(f"{i}. {mention}{custom_label}")
+
                     bot.reply_to(message, "\n".join(lines), parse_mode="HTML")
             else:
                 bot.reply_to(message, "ℹ️ В данный момент нет активных сборов.")
         else:
-            # Логика для ЛС: выбор группы и периода
             show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_group_'))
