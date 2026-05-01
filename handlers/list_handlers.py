@@ -30,6 +30,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         if message.chat.type in ['group', 'supergroup']:
             chat_id = message.chat.id
             col = active_collections.get(chat_id) or test_collection.get(chat_id)
+            
             if col:
                 count = len(col['participants'])
                 title = escape_html(col.get('title', 'Сбор'))
@@ -48,12 +49,13 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                             try:
                                 member = bot.get_chat_member(message.chat.id, u_id)
                                 if hasattr(member, 'custom_title') and member.custom_title:
-                                    custom_label = f" ({escape_html(member.custom_title)})"
+                                    custom_label = f" (<b>{escape_html(member.custom_title)}</b>)"
+                                    
                             except Exception:
                                 pass
 
                         if u_id:
-                            mention = f'<a href="tg://user?id={u_id}">{name}</a>'
+                            mention = f'<a href="tg://user?id={u_id}">\u200b{name}</a>'
                         else:
                             mention = name
                         
