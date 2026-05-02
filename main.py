@@ -106,29 +106,32 @@ if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
     print("✅ Webhook удален, старые обновления сброшены.")
     
-    time.sleep(5) 
-
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-    counter_thread = threading.Thread(
+    print("Ожидание завершения работы старых экземпляров (20 сек)...")
+    time.sleep(20)
+    threading.Thread(target=run_flask, daemon=True).start()
+    threading.Thread(
         target=update_counters, 
-        args=(bot, active_collections, test_collection)
-    )
-    counter_thread.daemon = True
-    counter_thread.start()
+        args=(bot, active_collections, test_collection),
+        daemon=True
+    ).start()
 
     try:
         all_groups = get_known_groups()
         for g in all_groups:
             try:
-                m = bot.get_chat_member(g['chat_id'], bot.get_me().id)
-                print(f"RENDER_LOG: Бот запущен в чате {g['chat_id']}. Текущий статус: {getattr(m, 'custom_title', 'Нет тега')}")
-            except:
-                pass
-    except:
-        pass
+                chat_id = g['chat_id']
+                m = bot.get_chat_member(chat_id, bot.get_me().id)
+                status = getattr(m, 'custom_title', 'Нет тега')
+                bot.send_message(chat_id, f"Бот запущен. Текущий статус: {status}")
+                print(f"RENDER_LOG: Оповещен чат {chat_id}")
+            except Exception as e:
+                print(f"RENDER_LOG: Не удалось отправить сообщение в {g.get('chat_id')}: {e}")
+    except Exception as e:
+        print(f"RENDER_LOG: Ошибка при получении списка групп: {e}")
 
     print("✅ Все системы запущены. Входим в infinity_polling...")
-    bot.infinity_polling(allowed_updates=['message', 'callback_query', 'message_reaction'])
+    bot.infinity_polling(
+        allowed_updates=['message', 'callback_query', 'message_reaction'],
+        timeout=60,
+        long_polling_timeout=5
+    )
