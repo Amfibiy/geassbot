@@ -43,6 +43,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                     for i, p in enumerate(col['participants'], 1):
                         name = escape_html(p['name'])
                         u_id = p.get('id') or p.get('user_id')
+                        username = p.get('username')
                         
                         custom_label = ""
                         if u_id:
@@ -50,14 +51,19 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                                 member = bot.get_chat_member(message.chat.id, u_id)
                                 if hasattr(member, 'custom_title') and member.custom_title:
                                     custom_label = f" (<b>{escape_html(member.custom_title)}</b>)"
+                                    print(f"Статус получен: {member.custom_title}")
                                     
                             except Exception:
+                                print(f"Статус для {name} не получен")
                                 pass
 
-                        if u_id:
-                            mention = f'<a href="tg://user?id={u_id}">\u200b{name}</a>'
+                        if username and username.strip():
+                            clean_username = username.replace('@', '')
+                            mention = f'<a href="https://t.me/{clean_username}">{name}</a>'
+                            print(f"Пользователь {name}: Отправлено без пуша (t.me)")
                         else:
                             mention = name
+                            print(f"Пользователь {name}: Отправлен просто текст")
                         
                         lines.append(f"{i}. {mention}{custom_label}")
 
@@ -65,6 +71,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
             else:
                 bot.reply_to(message, "ℹ️ В данный момент нет активных сборов.")
         else:
+            # Вызов функции для личных сообщений
             show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_group_'))
