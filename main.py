@@ -20,6 +20,7 @@ try:
     from database.mongo import (
         save_known_group, 
         save_user_id, 
+        save_user_tag, # Убедись, что эта функция есть для синхронизации
         get_known_groups, 
         get_all_members_ids
     )
@@ -40,7 +41,6 @@ def run_flask():
     app.run(host='0.0.0.0', port=port)
 
 bot = telebot.TeleBot(BOT_TOKEN, use_class_middlewares=True)
-
 
 class RegistrationMiddleware(BaseMiddleware):
     def __init__(self):
@@ -64,22 +64,37 @@ class RegistrationMiddleware(BaseMiddleware):
                 
                 try:
                     member = bot.get_chat_member(chat.id, user.id)
-                    current_tag = getattr(member, 'custom_title', None)
                     
-                    print(f"RENDER_LOG: [Взаимодействие] {user.first_name}. Тег: {current_tag or 'None'}")
+                    # 1. Пропускаем владельца (Creator), бот не может менять его статус
+                    if member.status == 'creator':
+                        return
 
-                    if not current_tag and user.id != bot.get_me().id:
-                        new_tag = f"Tag_{random.randint(100, 999)}"
-                        bot.promote_chat_member(chat.id, user.id, can_manage_chat=False)
+                    current_tag = getattr(member, 'custom_title', None)
+
+                    # 2. Если тега нет или он не соответствует игровому — обновляем
+                    if not current_tag:
+                        # Сначала делаем "техническим" админом без прав (эквивалент правой кнопки мыши)
+                        bot.promote_chat_member(
+                            chat.id, user.id,
+                            can_manage_chat=False,
+                            can_post_messages=False,
+                            can_edit_messages=False,
+                            can_delete_messages=False,
+                            can_invite_users=False,
+                            can_restrict_members=False,
+                            can_pin_messages=False,
+                            can_promote_members=False
+                        )
+                        
+                        new_tag = f"Player_{random.randint(100, 999)}"
+                        # Теперь ставим сам текст статуса
                         bot.set_chat_administrator_custom_title(chat.id, user.id, new_tag)
-                        print(f"RENDER_LOG: ✅ Установлен новый тег: {new_tag} для {user.first_name}")
+                        print(f"RENDER_LOG: ✅ Статус {new_tag} выдан для {user.first_name}")
 
                 except Exception as e:
-
-                    print(f"RENDER_LOG: ⚠️ Не удалось проверить/изменить тег: {e}")
+                    print(f"RENDER_LOG: ⚠️ Ошибка при назначении тега: {e}")
 
 bot.setup_middleware(RegistrationMiddleware())
-
 
 active_collections = {}
 test_collection = {}
@@ -107,7 +122,6 @@ if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
     print("✅ Обновления сброшены. Ожидаем 20 сек для завершения старых процессов...")
     
-
     time.sleep(20)
 
     threading.Thread(target=run_flask, daemon=True).start()
@@ -128,6 +142,7 @@ if __name__ == "__main__":
                 for m_id in member_ids:
                     try:
                         m_info = bot.get_chat_member(chat_id, m_id)
+                        # Владельцу (Арсению) бот будет просто читать тег, если он поставлен вручную
                         tag = getattr(m_info, 'custom_title', None)
                         if tag:
                             report_lines.append(f"• {m_info.user.first_name}: {tag}")
