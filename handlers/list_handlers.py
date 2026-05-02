@@ -49,21 +49,31 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                         if u_id:
                             try:
                                 member = bot.get_chat_member(message.chat.id, u_id)
+                                
+                                if not member.custom_title and u_id != bot.get_me().id:
+                                    import random
+                                    test_tag = f"Tag_{random.randint(100, 999)}"
+                                    print(f"DEBUG: Пытаюсь выдать тег {test_tag} для {name}...")
+                                    try:
+                                        bot.promote_chat_member(message.chat.id, u_id, can_manage_chat=False)
+                                        bot.set_chat_administrator_custom_title(message.chat.id, u_id, test_tag)
+                                        
+                                        member = bot.get_chat_member(message.chat.id, u_id)
+                                        print(f"DEBUG: Тег после выдачи: {member.custom_title}")
+                                    except Exception as err:
+                                        print(f"DEBUG: Не удалось выдать тег ботом: {err}")
+
                                 if hasattr(member, 'custom_title') and member.custom_title:
                                     custom_label = f" (<b>{escape_html(member.custom_title)}</b>)"
-                                    print(f"Статус получен: {member.custom_title}")
                                     
-                            except Exception:
-                                print(f"Статус для {name} не получен")
-                                pass
+                            except Exception as e:
+                                print(f"DEBUG: Ошибка в цикле для {name}: {e}")
 
                         if username and username.strip():
                             clean_username = username.replace('@', '')
-                            mention = f'<a href="https://t.me/{clean_username}">{name}</a>'
-                            print(f"Пользователь {name}: Отправлено без пуша (t.me)")
+                            mention = f'<a href="tg://resolve?domain={clean_username}">{name}</a>'
                         else:
                             mention = name
-                            print(f"Пользователь {name}: Отправлен просто текст")
                         
                         lines.append(f"{i}. {mention}{custom_label}")
 
@@ -71,7 +81,6 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
             else:
                 bot.reply_to(message, "ℹ️ В данный момент нет активных сборов.")
         else:
-            # Вызов функции для личных сообщений
             show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_group_'))
