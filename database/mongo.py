@@ -87,24 +87,21 @@ def delete_history_records(chat_id, begin_ts=None, end_ts=None):
 def clear_all_history():
     history_col.delete_many({})
 
-def save_user_id(chat_id, u_id, username):
+def save_user_id(chat_id, u_id, username, first_name=None): 
     c_id = int(chat_id)
     clean_username = username.replace("@", "").strip() if username else None
 
-    existing_user = members_col.find_one({'chat_id': c_id, 'user_id': u_id})
-    
     members_col.update_one(
         {'chat_id': c_id, 'user_id': u_id},
         {'$set': {
             'username': clean_username,
+            'name': first_name, 
             'last_seen': datetime.datetime.now()
         }},
         upsert=True
     )
     
     update_group_actual_count(c_id)
-    
-    return existing_user is None
 
 def update_group_actual_count(chat_id):
     actual_count = members_col.count_documents({'chat_id': int(chat_id)})

@@ -42,17 +42,23 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                     
                     for i, p in enumerate(col['participants'], 1):
                         name = escape_html(p['name'])
-                        
-                        u_id = p.get('user_id') or get_user_id_by_name(chat_id, p['name'])
+
+                        u_id = p.get('user_id') or p.get('id') or get_user_id_by_name(chat_id, p['name'])
                         
                         if u_id:
                             mention = f'<a href="tg://user?id={u_id}">{name}</a>'
                         else:
+                            print(f"⚠️ [DEBUG] ID для {name} не найден в БД!")
                             mention = name
                         
                         lines.append(f"{i}. {mention}")
 
-                    bot.reply_to(message, "\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
+                    bot.reply_to(
+                        message, 
+                        "\n".join(lines), 
+                        parse_mode="HTML", 
+                        disable_web_page_preview=True
+                    )
             else:
                 bot.reply_to(message, "ℹ️ В данный момент нет активных сборов.")
         else:
