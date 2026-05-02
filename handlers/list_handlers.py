@@ -42,40 +42,15 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                     
                     for i, p in enumerate(col['participants'], 1):
                         name = escape_html(p['name'])
-                        u_id = p.get('id') or p.get('user_id')
                         username = p.get('username')
                         
-                        custom_label = ""
-                        if u_id:
-                            try:
-                                member = bot.get_chat_member(message.chat.id, u_id)
-                                
-                                if not member.custom_title and u_id != bot.get_me().id:
-                                    import random
-                                    test_tag = f"Tag_{random.randint(100, 999)}"
-                                    print(f"RENDER_LOG: Пробую выдать тег {test_tag} для {name}")
-                                    try:
-                                        bot.promote_chat_member(message.chat.id, u_id, can_manage_chat=False)
-                                        bot.set_chat_administrator_custom_title(message.chat.id, u_id, test_tag)
-                                        
-                                        member = bot.get_chat_member(message.chat.id, u_id)
-                                    except Exception as err:
-                                        print(f"RENDER_LOG: Ошибка назначения тега: {err}")
-
-                                if hasattr(member, 'custom_title') and member.custom_title:
-                                    custom_label = f" (<b>{escape_html(member.custom_title)}</b>)"
-                                    print(f"RENDER_LOG: Отображаем тег для {name}: {member.custom_title}")
-                                    
-                            except Exception as e:
-                                print(f"RENDER_LOG: Ошибка получения данных участника {name}: {e}")
-
                         if username and username.strip():
                             clean_username = username.replace('@', '')
                             mention = f'<a href="tg://resolve?domain={clean_username}">{name}</a>'
                         else:
                             mention = name
                         
-                        lines.append(f"{i}. {mention}{custom_label}")
+                        lines.append(f"{i}. {mention}")
 
                     bot.reply_to(message, "\n".join(lines), parse_mode="HTML")
             else:

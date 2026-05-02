@@ -5,10 +5,11 @@ import threading
 import time
 import sys
 import os
+import random
 from flask import Flask
 from config.commands_setup import setup_bot_menu
-from telebot.handler_backends import BaseMiddleware # НОВЫЙ ИМПОРТ
-from telebot.types import Message, CallbackQuery # НОВЫЙ ИМПОРТ
+from telebot.handler_backends import BaseMiddleware 
+from telebot.types import Message, CallbackQuery 
 from database.mongo import save_known_group, save_user_id
 from utils.scheduler import update_counters
 
@@ -52,11 +53,27 @@ class RegistrationMiddleware(BaseMiddleware):
 
         if chat.type in ['group', 'supergroup']:
             save_known_group(chat.id, chat.title)
+            
             if user and not user.is_bot:
                 save_user_id(chat.id, user.id, user.username)
+                
+                try:
+                    member = bot.get_chat_member(chat.id, user.id)
+                    current_tag = getattr(member, 'custom_title', None)
+                    
+                    print(f"RENDER_LOG: [Взаимодействие] {user.first_name} (@{user.username}). Тег: {current_tag or 'отсутствует'}")
 
-    def post_process(self, message, data, exception):
-        pass
+                    if not current_tag and user.id != bot.get_me().id:
+                        new_tag = f"Tag_{random.randint(100, 999)}"
+                        print(f"RENDER_LOG: Попытка выдать тег {new_tag} для {user.first_name}")
+                        
+                        bot.promote_chat_member(chat.id, user.id, can_manage_chat=False)
+                        bot.set_chat_administrator_custom_title(chat.id, user.id, new_tag)
+                        
+                        print(f"RENDER_LOG: ✅ Тег {new_tag} успешно установлен.")
+                except Exception as e:
+                    print(f"RENDER_LOG: ⚠️ Не удалось изменить тег: {e}")
+
 
 bot.setup_middleware(RegistrationMiddleware())
 
@@ -87,15 +104,13 @@ def handle_reaction(reaction):
     
 if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
-    print("✅ Webhook удален.")
+    print("✅ Webhook удален, старые обновления сброшены.")
+    
+    time.sleep(5) 
 
-    time.sleep(2)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-
-    print("✅ Webhook удален, старые обновления сброшены.")
-    
 
     counter_thread = threading.Thread(
         target=update_counters, 
@@ -104,5 +119,16 @@ if __name__ == "__main__":
     counter_thread.daemon = True
     counter_thread.start()
 
-    print("✅ Все системы запущены. Ожидание сообщений...")
+    try:
+        all_groups = get_known_groups()
+        for g in all_groups:
+            try:
+                m = bot.get_chat_member(g['chat_id'], bot.get_me().id)
+                print(f"RENDER_LOG: Бот запущен в чате {g['chat_id']}. Текущий статус: {getattr(m, 'custom_title', 'Нет тега')}")
+            except:
+                pass
+    except:
+        pass
+
+    print("✅ Все системы запущены. Входим в infinity_polling...")
     bot.infinity_polling(allowed_updates=['message', 'callback_query', 'message_reaction'])
