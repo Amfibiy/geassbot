@@ -6,5 +6,6 @@ from .mongo import (
     save_user_id,
     get_all_members_ids,
     delete_history_records,  
-    clear_all_history        
+    clear_all_history,
+    get_user_id_by_name        
 )

@@ -1,6 +1,6 @@
 import datetime
 from telebot import types
-from database.mongo import get_group_by_id,get_combined_settings
+from database.mongo import get_group_by_id,get_combined_settings,get_user_id_by_name
 from utils.validators import validate_date
 from utils.helpers import (get_cancel_kbd, 
                            check_cancellation,
@@ -42,7 +42,8 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                     
                     for i, p in enumerate(col['participants'], 1):
                         name = escape_html(p['name'])
-                        u_id = p.get('user_id')
+                        
+                        u_id = p.get('user_id') or get_user_id_by_name(chat_id, p['name'])
                         
                         if u_id:
                             mention = f'<a href="tg://user?id={u_id}">{name}</a>'

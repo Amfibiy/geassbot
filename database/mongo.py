@@ -204,3 +204,10 @@ def get_exceptions_details(chat_id):
     u_ids = settings['exceptions']
     users = members_col.find({'chat_id': int(chat_id), 'user_id': {'$in': u_ids}})
     return [{'id': u['user_id'], 'username': u.get('username', '???')} for u in users]
+
+def get_user_id_by_name(chat_id, name):
+    user = members_col.find_one({
+        'chat_id': int(chat_id),
+        'name': name
+        })
+    return user['user_id'] if user else None
