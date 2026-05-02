@@ -42,17 +42,19 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                     
                     for i, p in enumerate(col['participants'], 1):
                         name = escape_html(p['name'])
+                        user_id = p.get('user_id')
                         username = p.get('username')
-                        
                         if username and username.strip():
                             clean_username = username.replace('@', '')
                             mention = f'<a href="tg://resolve?domain={clean_username}">{name}</a>'
+                        elif user_id:
+                            mention = f'<a href="tg://user?id={user_id}">{name}</a>'
                         else:
                             mention = name
                         
                         lines.append(f"{i}. {mention}")
 
-                    bot.reply_to(message, "\n".join(lines), parse_mode="HTML")
+                    bot.reply_to(message, "\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
             else:
                 bot.reply_to(message, "ℹ️ В данный момент нет активных сборов.")
         else:

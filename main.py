@@ -5,7 +5,6 @@ import threading
 import time
 import sys
 import os
-import random
 from flask import Flask
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,12 +16,10 @@ try:
     from config.commands_setup import setup_bot_menu
     from telebot.handler_backends import BaseMiddleware 
     from telebot.types import Message, CallbackQuery 
-    # Убрал save_user_tag отсюда
     from database.mongo import (
         save_known_group, 
         save_user_id, 
-        get_known_groups, 
-        get_all_members_ids
+        get_known_groups
     )
     from handlers import register_all_handlers
     from utils.scheduler import update_counters
@@ -56,35 +53,6 @@ class RegistrationMiddleware(BaseMiddleware):
         if chat.type in ['group', 'supergroup'] and user and not user.is_bot:
             save_known_group(chat.id, chat.title)
             save_user_id(chat.id, user.id, user.username)
-            
-            try:
-                member = bot.get_chat_member(chat.id, user.id)
-                
-                # Пропускаем владельца
-                if member.status == 'creator':
-                    return
-
-                # Если не админ — делаем "пустым" админом для тега
-                if member.status != 'administrator':
-                    bot.promote_chat_member(
-                        chat.id, user.id,
-                        can_manage_chat=False,
-                        can_post_messages=False,
-                        can_edit_messages=False,
-                        can_delete_messages=False,
-                        can_invite_users=False,
-                        can_restrict_members=False,
-                        can_pin_messages=False,
-                        can_promote_members=False
-                    )
-                
-                # Ставим тег (даже если он уже был админом)
-                new_tag = f"Player_{random.randint(100, 999)}"
-                bot.set_chat_administrator_custom_title(chat.id, user.id, new_tag)
-                print(f"RENDER_LOG: ✅ Тег обновлен для {user.first_name}")
-
-            except Exception as e:
-                print(f"RENDER_LOG: ⚠️ Ошибка тега: {e}")
 
 bot.setup_middleware(RegistrationMiddleware())
 
@@ -107,29 +75,11 @@ def handle_reaction(reaction):
     
 if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
-    print("✅ Webhook сброшен. Ожидание 20 сек...")
+    print("✅ Система запущена. Ожидание 20 сек...")
     time.sleep(20)
 
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=update_counters, args=(bot, active_collections, test_collection), daemon=True).start()
 
-    try:
-        all_groups = get_known_groups()
-        for g in all_groups:
-            try:
-                chat_id = g['chat_id']
-                member_ids = get_all_members_ids(chat_id)
-                report_lines = []
-                for m_id in member_ids:
-                    try:
-                        m_info = bot.get_chat_member(chat_id, m_id)
-                        tag = getattr(m_info, 'custom_title', None)
-                        if tag: report_lines.append(f"• {m_info.user.first_name}: {tag}")
-                    except: continue
-
-                msg = "🤖 **Бот перезапущен!**\n\n" + ("Актуальные статусы:\n" + "\n".join(report_lines) if report_lines else "Статусы не найдены.")
-                bot.send_message(chat_id, msg, parse_mode="Markdown")
-            except Exception as e: print(f"RENDER_LOG: Ошибка рассылки: {e}")
-    except: pass
-
+    print("✅ Бот в сети. Ожидаем сообщений.")
     bot.infinity_polling(allowed_updates=['message', 'callback_query', 'message_reaction'])
