@@ -86,12 +86,16 @@ def handle_reaction(reaction):
         save_user_id(chat_id, reaction.user.id, reaction.user.username)
     
 if __name__ == "__main__":
+    bot.delete_webhook(drop_pending_updates=True)
+    print("✅ Webhook удален.")
+
+    time.sleep(2)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    bot.delete_webhook(drop_pending_updates=True) 
     print("✅ Webhook удален, старые обновления сброшены.")
+    
 
     counter_thread = threading.Thread(
         target=update_counters, 
