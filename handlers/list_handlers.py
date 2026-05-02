@@ -53,21 +53,21 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                                 if not member.custom_title and u_id != bot.get_me().id:
                                     import random
                                     test_tag = f"Tag_{random.randint(100, 999)}"
-                                    print(f"DEBUG: Пытаюсь выдать тег {test_tag} для {name}...")
+                                    print(f"RENDER_LOG: Пробую выдать тег {test_tag} для {name}")
                                     try:
                                         bot.promote_chat_member(message.chat.id, u_id, can_manage_chat=False)
                                         bot.set_chat_administrator_custom_title(message.chat.id, u_id, test_tag)
                                         
                                         member = bot.get_chat_member(message.chat.id, u_id)
-                                        print(f"DEBUG: Тег после выдачи: {member.custom_title}")
                                     except Exception as err:
-                                        print(f"DEBUG: Не удалось выдать тег ботом: {err}")
+                                        print(f"RENDER_LOG: Ошибка назначения тега: {err}")
 
                                 if hasattr(member, 'custom_title') and member.custom_title:
                                     custom_label = f" (<b>{escape_html(member.custom_title)}</b>)"
+                                    print(f"RENDER_LOG: Отображаем тег для {name}: {member.custom_title}")
                                     
                             except Exception as e:
-                                print(f"DEBUG: Ошибка в цикле для {name}: {e}")
+                                print(f"RENDER_LOG: Ошибка получения данных участника {name}: {e}")
 
                         if username and username.strip():
                             clean_username = username.replace('@', '')

@@ -90,7 +90,8 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    bot.remove_webhook()
+    bot.delete_webhook(drop_pending_updates=True) 
+    print("✅ Webhook удален, старые обновления сброшены.")
 
     counter_thread = threading.Thread(
         target=update_counters, 
