@@ -87,17 +87,22 @@ def delete_history_records(chat_id, begin_ts=None, end_ts=None):
 def clear_all_history():
     history_col.delete_many({})
 
-def save_user_id(chat_id, u_id, username, first_name=None): 
+def save_user_id(chat_id, u_id, username, first_name=None, custom_title=None):
     c_id = int(chat_id)
     clean_username = username.replace("@", "").strip() if username else None
+    
+    update_data = {
+        'username': clean_username,
+        'name': first_name,
+        'last_seen': datetime.datetime.now()
+    }
+
+    if custom_title is not None:
+        update_data['custom_title'] = custom_title
 
     members_col.update_one(
         {'chat_id': c_id, 'user_id': u_id},
-        {'$set': {
-            'username': clean_username,
-            'name': first_name, 
-            'last_seen': datetime.datetime.now()
-        }},
+        {'$set': update_data},
         upsert=True
     )
     

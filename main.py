@@ -40,7 +40,8 @@ def run_flask():
 bot = telebot.TeleBot(BOT_TOKEN, use_class_middlewares=True)
 
 class RegistrationMiddleware(BaseMiddleware):
-    def __init__(self):
+    def __init__(self, bot_instance):
+        self.bot = bot_instance
         self.update_types = ['message', 'callback_query']
 
     def pre_process(self, message, data):
@@ -52,9 +53,23 @@ class RegistrationMiddleware(BaseMiddleware):
 
         if chat.type in ['group', 'supergroup'] and user and not user.is_bot:
             save_known_group(chat.id, chat.title)
-            save_user_id(chat.id, user.id, user.username)
+            
+            custom_title = None
+            try:
+                member = self.bot.get_chat_member(chat.id, user.id)
+                custom_title = getattr(member, 'custom_title', None)
+            except Exception as e:
+                print(f"⚠️ Не удалось получить статус для {user.id}: {e}")
 
-bot.setup_middleware(RegistrationMiddleware())
+            save_user_id(
+                chat.id, 
+                user.id, 
+                user.username, 
+                first_name=user.first_name, 
+                custom_title=custom_title
+            )
+
+bot.setup_middleware(RegistrationMiddleware(bot))
 
 active_collections, test_collection, user_sessions = {}, {}, {}
 setup_bot_menu(bot)
@@ -72,6 +87,7 @@ def handle_reaction(reaction):
     save_known_group(chat_id, reaction.chat.title or f"Group {chat_id}")
     if reaction.user and not reaction.user.is_bot:
         save_user_id(chat_id, reaction.user.id, reaction.user.username)
+
     
 if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
