@@ -14,22 +14,8 @@ admin_prefs_col = db['admin_preferences']
 
 def save_known_group(chat_id, title, member_count=None):
     c_id = int(chat_id)
-    
-    # Если количество участников не передали, считаем сами из базы
-    if member_count is None:
-        actual_count = members_col.count_documents({'chat_id': c_id})
-    else:
-        actual_count = member_count
-    
-    groups_col.update_one(
-        {'chat_id': c_id},
-        {'$set': {
-            'title': title, 
-            'last_activity': datetime.datetime.now(),
-            'member_count': actual_count
-        }},
-        upsert=True
-    )
+    actual_count = member_count if member_count is not None else members_col.count_documents({'chat_id': c_id})
+    groups_col.update_one({'chat_id': c_id}, {'$set': {'title': title, 'last_activity': datetime.datetime.now(), 'member_count': actual_count}}, upsert=True)
 
 def get_group_member_count(chat_id):
     group = groups_col.find_one({'chat_id': int(chat_id)})
@@ -116,26 +102,15 @@ def update_group_actual_count(chat_id):
     )
 
 def update_group_duration(chat_id, duration_min):
-    settings_col.update_one(
-        {'chat_id': int(chat_id)},
-        {'$set': {'default_duration': int(duration_min) * 60}},
-        upsert=True
-    )
+    settings_col.update_one({'chat_id': int(chat_id)}, {'$set': {'default_duration': int(duration_min) * 60}}, upsert=True)
 
 def update_admin_timezone(admin_id, tz_string):
-    admin_prefs_col.update_one(
-        {'admin_id': int(admin_id)},
-        {'$set': {'timezone': tz_string}},
-        upsert=True
-    )
+    admin_prefs_col.update_one({'admin_id': int(admin_id)}, {'$set': {'timezone': tz_string}}, upsert=True)
 
 def get_combined_settings(chat_id, admin_id):
     g_set = settings_col.find_one({'chat_id': int(chat_id)}) or {}
     a_set = admin_prefs_col.find_one({'admin_id': int(admin_id)}) or {}
-    return {
-        'duration': g_set.get('default_duration', 1800),
-        'timezone': a_set.get('timezone', 'МСК+2')
-    }
+    return {'duration': g_set.get('default_duration', 1800), 'timezone': a_set.get('timezone', 'МСК+2')}
 
 def get_all_members_ids(chat_id):
     c_id = int(chat_id)
@@ -157,35 +132,19 @@ def delete_history_record_by_id(record_id):
     
 def add_to_exceptions(chat_id, username):
     clean_name = username.replace("@", "").strip()
-    user = members_col.find_one({
-        'chat_id': int(chat_id), 
-        'username': re.compile(f"^{clean_name}$", re.I)
-    })
-    
-    if not user:
-        return False, f"Пользователь @{clean_name} не найден. Он должен быть участником группы."
-    
-    settings_col.update_one(
-        {'chat_id': int(chat_id)},
-        {'$addToSet': {'exceptions': user['user_id']}},
-        upsert=True
-    )
+    user = members_col.find_one({'chat_id': int(chat_id), 'username': re.compile(f"^{clean_name}$", re.I)})
+    if not user: return False, f"Пользователь @{clean_name} не найден в базе группы."
+    settings_col.update_one({'chat_id': int(chat_id)}, {'$addToSet': {'exceptions': user['user_id']}}, upsert=True)
     return True, f"✅ @{user['username']} добавлен в исключения."
 
 def get_exceptions_list(chat_id):
     settings = settings_col.find_one({'chat_id': int(chat_id)}) or {}
     ex_ids = settings.get('exceptions', [])
-    if not ex_ids:
-        return []
-    
     users = members_col.find({'chat_id': int(chat_id), 'user_id': {'$in': ex_ids}})
     return [f"@{u['username']}" for u in users if u.get('username')]
 
 def clear_all_exceptions(chat_id):
-    settings_col.update_one(
-        {'chat_id': int(chat_id)},
-        {'$set': {'exceptions': []}}
-    )
+    settings_col.update_one({'chat_id': int(chat_id)}, {'$set': {'exceptions': []}})
 
 def remove_from_exceptions(chat_id, user_id):
     try:
@@ -199,11 +158,8 @@ def remove_from_exceptions(chat_id, user_id):
         return False
 
 def get_exceptions_details(chat_id):
-    settings = settings_col.find_one({'chat_id': int(chat_id)})
-    if not settings or 'exceptions' not in settings:
-        return []
-    
-    u_ids = settings['exceptions']
+    settings = settings_col.find_one({'chat_id': int(chat_id)}) or {}
+    u_ids = settings.get('exceptions', [])
     users = members_col.find({'chat_id': int(chat_id), 'user_id': {'$in': u_ids}})
     return [{'id': u['user_id'], 'username': u.get('username', '???')} for u in users]
 
@@ -213,3 +169,13 @@ def get_user_id_by_name(chat_id, name):
         'name': name
         })
     return user['user_id'] if user else None
+
+def update_internal_tag(chat_id, user_id, tag_text):
+    members_col.update_one({'chat_id': int(chat_id), 'user_id': int(user_id)}, {'$set': {'internal_tag': tag_text.strip()}}, upsert=True)
+
+def get_user_internal_tag(chat_id, user_id):
+    user = members_col.find_one({'chat_id': int(chat_id), 'user_id': int(user_id)})
+    return user.get('internal_tag') if user else None
+
+def get_chat_members_list(chat_id):
+    return list(members_col.find({'chat_id': int(chat_id)}))

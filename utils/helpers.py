@@ -22,15 +22,11 @@ def is_bot_admin(chat_id, bot):
 def get_admin_groups(user_id, bot):
     all_groups = get_known_groups()
     admin_groups = []
-    
     for g in all_groups:
         try:
-            chat_id = int(g['chat_id'])
-            member = bot.get_chat_member(chat_id, user_id)
-            if member.status in ['creator', 'administrator']:
-                admin_groups.append(g)
-        except Exception:
-            continue
+            member = bot.get_chat_member(int(g['chat_id']), user_id)
+            if member.status in ['creator', 'administrator']: admin_groups.append(g)
+        except: continue
     return admin_groups
 
 def format_date(ts):
@@ -40,16 +36,12 @@ def get_thread_id(message):
     return message.message_thread_id if message.is_topic_message else None
 
 def get_tz_offset_hours(tz_string):
-    base_offset = 3  
-    if not tz_string or tz_string == "МСК":
-        return base_offset
+    base_offset = 3 
+    if not tz_string or tz_string == "МСК": return base_offset
     try:
-        if "+" in tz_string:
-            return base_offset + int(tz_string.split("+")[1])
-        elif "-" in tz_string:
-            return base_offset - int(tz_string.split("-")[1])
-    except:
-        pass
+        if "+" in tz_string: return base_offset + int(tz_string.split("+")[1])
+        elif "-" in tz_string: return base_offset - int(tz_string.split("-")[1])
+    except: pass
     return base_offset
 
 def get_localized_timestamps(tz_string, period="today"):
@@ -87,11 +79,7 @@ def check_cancellation(message, bot, user_sessions):
         user_id = message.from_user.id
         if user_id in user_sessions:
             user_sessions[user_id]['step'] = None
-        bot.send_message(
-            message.chat.id, 
-            "🏠 Действие отменено. Возвращаюсь в главное меню.", 
-            reply_markup=types.ReplyKeyboardRemove()
-        )
+        bot.send_message(message.chat.id, "🏠 Действие отменено. Возвращаюсь в меню.", reply_markup=types.ReplyKeyboardRemove())
         return True
     return False
 
