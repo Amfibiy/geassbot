@@ -15,7 +15,7 @@ from database.mongo import (
     remove_from_exceptions,
     update_internal_tag, 
     get_user_internal_tag, 
-    get_chat_members_list 
+    get_chat_members_list, 
 )
 
 def register_settings_handlers(bot, user_sessions):
