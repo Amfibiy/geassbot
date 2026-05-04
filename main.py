@@ -51,30 +51,28 @@ class RegistrationMiddleware(BaseMiddleware):
         elif isinstance(message, CallbackQuery):
             chat, user = message.message.chat, message.from_user
             current_msg = message.message
-        else: 
-            return
-
+        else: return
         if chat.type in ['group', 'supergroup'] and user and not user.is_bot:
-            save_known_group(chat.id, chat.title)
-            
+            save_known_group(chat.id, chat.title)      
             official_tag = None
             try:
-                official_tag = getattr(current_msg, 'sender_tag', None)
-
+                official_tag = getattr(current_msg, 'sender_tag', None) or current_msg.json.get('sender_tag')
                 if not official_tag:
                     member = self.bot.get_chat_member(chat.id, user.id)
+                    print(f"DEBUG: Full Member JSON for {user.id}: {member.json}")
                     
                     official_tag = (
                         member.json.get('tag') or 
                         getattr(member, 'custom_title', None)
                     )
+                
+                print(f"📊 [USER_LOG] User: {user.username} (ID: {user.id}) | Tag: {official_tag}")
+
             except Exception as e:
-                print(f"⚠️ Не удалось получить статус для {user.id}: {e}")
+                print(f"⚠️ Ошибка получения статуса для {user.id}: {e}")
 
             save_user_id(
-                chat.id, 
-                user.id, 
-                user.username, 
+                chat.id, user.id, user.username, 
                 first_name=user.first_name, 
                 telegram_tag=official_tag  
             )
