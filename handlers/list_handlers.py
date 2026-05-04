@@ -1,6 +1,6 @@
 import datetime
 from telebot import types
-from database.mongo import get_group_by_id,get_combined_settings,get_user_id_by_name
+from database.mongo import get_group_by_id,get_combined_settings,get_user_id_by_name,get_user_internal_tag
 from utils.validators import validate_date
 from utils.helpers import (get_cancel_kbd, 
                            check_cancellation,
@@ -42,16 +42,16 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                     
                     for i, p in enumerate(col['participants'], 1):
                         name = escape_html(p['name'])
-
                         u_id = p.get('user_id') or p.get('id') or get_user_id_by_name(chat_id, p['name'])
                         
+                        tag = get_user_internal_tag(chat_id, u_id) 
+                        tag_display = f" [<code>{tag}</code>]" if tag else ""
                         if u_id:
                             mention = f'<a href="tg://user?id={u_id}">{name}</a>'
                         else:
-                            print(f"⚠️ [DEBUG] ID для {name} не найден в БД!")
                             mention = name
                         
-                        lines.append(f"{i}. {mention}")
+                        lines.append(f"{i}. {mention}{tag_display}")
 
                     bot.reply_to(
                         message, 

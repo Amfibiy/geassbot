@@ -51,6 +51,7 @@ def register_settings_handlers(bot, user_sessions):
         text = (f"🛠 <b>Настройки группы {target_chat_id}</b>\n\n"
                 f"⏱ Время сбора: <b>{configs['duration'] // 60} мин.</b>\n"
                 f"🌍 Ваш часовой пояс: {configs.get('timezone', 'Не задан')}")
+        
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
             types.InlineKeyboardButton("⏱ Изменить время", callback_data=f"set_dur_{target_chat_id}"),
@@ -58,9 +59,15 @@ def register_settings_handlers(bot, user_sessions):
             types.InlineKeyboardButton("🚫 Исключения", callback_data=f"set_ex_{target_chat_id}"),
             types.InlineKeyboardButton("🏷 Управление тегами", callback_data=f"manage_tags_{target_chat_id}"),
             types.InlineKeyboardButton("🔙 К списку групп", callback_data="set_back_list")
-                )
-        if message_id: bot.edit_message_text(text, chat_id_to_send, message_id, reply_markup=markup, parse_mode="HTML")
-        else: bot.send_message(chat_id_to_send, text, reply_markup=markup, parse_mode="HTML")
+        )
+        
+        if message_id:
+            try:
+                bot.edit_message_text(text, chat_id_to_send, message_id, reply_markup=markup, parse_mode="HTML")
+            except:
+                bot.send_message(chat_id_to_send, text, reply_markup=markup, parse_mode="HTML")
+        else:
+            bot.send_message(chat_id_to_send, text, reply_markup=markup, parse_mode="HTML")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_tz_'))
     def set_timezone_menu(call):
@@ -123,7 +130,7 @@ def register_settings_handlers(bot, user_sessions):
         if users_details:
             for u in users_details:
                 u_id = u.get('id') or u.get('user_id')
-                u_name = u.get('username') or '???'
+                u_name = u.get('username') or u.get('first_name') or str(u_id)
                 markup.add(types.InlineKeyboardButton(f"❌ Удалить @{u_name}", callback_data=f"rm_ex_{u_id}_{chat_id}"))
         
         markup.add(types.InlineKeyboardButton("➕ Добавить (юзернейм)", callback_data=f"add_ex_mode_{chat_id}"))
@@ -132,15 +139,15 @@ def register_settings_handlers(bot, user_sessions):
         
         markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=f"set_main_{chat_id}"))
         
-        m_chat_id = message.chat.id
-        m_id = message_id if message_id else (message.message_id if hasattr(message, 'message_id') else None)
+        current_chat_id = message.chat.id
         
         try:
-            if m_id: bot.edit_message_text(text, m_chat_id, m_id, reply_markup=markup, parse_mode="HTML")
-            else: bot.send_message(m_chat_id, text, reply_markup=markup, parse_mode="HTML")
+            if message_id:
+                bot.edit_message_text(text, current_chat_id, message_id, reply_markup=markup, parse_mode="HTML")
+            else:
+                bot.send_message(current_chat_id, text, reply_markup=markup, parse_mode="HTML")
         except Exception as e:
-            print(f"Error rendering exceptions menu: {e}")
-            bot.send_message(m_chat_id, text, reply_markup=markup, parse_mode="HTML")
+            bot.send_message(current_chat_id, text, reply_markup=markup, parse_mode="HTML")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('clear_ex_'))
     def handle_clear_exceptions_call(call):
@@ -170,54 +177,12 @@ def register_settings_handlers(bot, user_sessions):
         chat_id = call.data.replace('manage_tags_', '')
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("📢 Кнопка получения в чат", callback_data=f"send_tag_btn_{chat_id}"),
             types.InlineKeyboardButton("✏️ Изменить теги участников", callback_data=f"list_tag_members_{chat_id}"),
             types.InlineKeyboardButton("🔙 Назад", callback_data=f"set_main_{chat_id}")
         )
         bot.edit_message_text("🏷 <b>Управление тегами участников</b>", 
                              call.message.chat.id, call.message.message_id, 
                              reply_markup=markup, parse_mode="HTML")
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('send_tag_btn_'))
-    def send_tag_button_to_group(call):
-        chat_id = int(call.data.replace('send_tag_btn_', ''))
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🎁 Получить мой тег", callback_data=f"get_my_tag_{chat_id}"))
-        
-        try:
-            bot.send_message(chat_id, "✨ Администратор активировал раздачу тегов! Нажмите кнопку, чтобы получить свой статус.", reply_markup=markup)
-            bot.answer_callback_query(call.id, "✅ Кнопка отправлена в группу")
-        except:
-            bot.answer_callback_query(call.id, "❌ Ошибка: бот не может писать в группу", show_alert=True)
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('get_my_tag_'))
-    def handle_get_tag_in_group(call):
-        chat_id = int(call.data.replace('get_my_tag_', ''))
-        user_id = call.from_user.id
-        try:
-            member = bot.get_chat_member(chat_id, user_id)
-            
-            print(f"DEBUG: Button Press JSON: {member.json}")
-
-            official_tag = (
-                member.json.get('tag') or 
-                getattr(member, 'custom_title', None) or
-                getattr(call.message, 'sender_tag', None) 
-            )
-            
-            print(f"📊 [BUTTON_LOG] User: {call.from_user.username} | Extracted Tag: {official_tag}")
-
-            save_user_id(chat_id, user_id, call.from_user.username, call.from_user.first_name, official_tag)
-            final_tag = get_user_internal_tag(chat_id, user_id)
-        
-            if final_tag:
-                bot.answer_callback_query(call.id, f"✅ Твой статус в базе: {final_tag}", show_alert=True)
-            else:
-                bot.answer_callback_query(call.id, "💡 Тег не найден. Попробуй отправить любое сообщение в чат.", show_alert=True)
-                
-        except Exception as e:
-            print(f"❌ Error in get_tag button: {e}")
-            bot.answer_callback_query(call.id, "❌ Бот должен быть админом с правом 'Выбор администраторов'.", show_alert=True)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_tag_members_'))
     def list_members_for_tags(call):
@@ -336,4 +301,10 @@ def register_settings_handlers(bot, user_sessions):
         msg = bot.send_message(call.message.chat.id, text, 
                                reply_markup=get_cancel_kbd(), parse_mode="HTML")
         bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
+    
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('set_ex_'))
+    def handle_ex_menu_call(call):
+        bot.clear_step_handler_by_chat_id(call.message.chat.id)
+        chat_id = call.data.replace('set_ex_', '')
+        show_exceptions_menu(call.message, chat_id, bot, call.message.message_id)
     
