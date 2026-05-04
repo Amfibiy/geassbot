@@ -73,7 +73,7 @@ def delete_history_records(chat_id, begin_ts=None, end_ts=None):
 def clear_all_history():
     history_col.delete_many({})
 
-def save_user_id(chat_id, u_id, username, first_name=None, custom_title=None):
+def save_user_id(chat_id, u_id, username, first_name=None, telegram_tag=None):
     c_id = int(chat_id)
     clean_username = username.replace("@", "").strip() if username else None
     
@@ -82,16 +82,14 @@ def save_user_id(chat_id, u_id, username, first_name=None, custom_title=None):
         'name': first_name,
         'last_seen': datetime.datetime.now()
     }
-
-    if custom_title is not None:
-        update_data['custom_title'] = custom_title
+    if telegram_tag:
+        update_data['internal_tag'] = telegram_tag
 
     members_col.update_one(
-        {'chat_id': c_id, 'user_id': u_id},
+        {'chat_id': c_id, 'user_id': int(u_id)},
         {'$set': update_data},
         upsert=True
     )
-    
     update_group_actual_count(c_id)
 
 def update_group_actual_count(chat_id):

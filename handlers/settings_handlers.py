@@ -15,7 +15,8 @@ from database.mongo import (
     remove_from_exceptions,
     update_internal_tag, 
     get_user_internal_tag, 
-    get_chat_members_list, 
+    get_chat_members_list,
+    save_user_id 
 )
 
 def register_settings_handlers(bot, user_sessions):
@@ -61,6 +62,18 @@ def register_settings_handlers(bot, user_sessions):
         if message_id: bot.edit_message_text(text, chat_id_to_send, message_id, reply_markup=markup, parse_mode="HTML")
         else: bot.send_message(chat_id_to_send, text, reply_markup=markup, parse_mode="HTML")
 
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('set_tz_'))
+    def set_timezone_menu(call):
+        chat_id = call.data.replace('set_tz_', '')
+        markup = types.InlineKeyboardMarkup(row_width=3)
+        zones = ["МСК-1", "МСК", "МСК+1", "МСК+2", "МСК+3", "МСК+4"]
+        btns = [types.InlineKeyboardButton(tz, callback_data=f"save_tz_{tz}:{chat_id}") for tz in zones]
+        markup.add(*btns)
+        markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=f"set_main_{chat_id}"))
+        bot.edit_message_text("🌍 <b>Выберите часовой пояс для отчетов:</b>", 
+                             call.message.chat.id, call.message.message_id, 
+                             reply_markup=markup, parse_mode="HTML")
+        
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_dur_'))
     def set_duration_menu(call):
         chat_id = call.data.replace('set_dur_', '')
@@ -70,24 +83,26 @@ def register_settings_handlers(bot, user_sessions):
 
         for i in range(0, len(btns), 3):
             markup.add(*btns[i:i+3])
-            
         markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=f"set_main_{chat_id}"))
         
         bot.edit_message_text("⏱ <b>Выберите время или введите число вручную:</b>", 
                              call.message.chat.id, call.message.message_id, 
                              reply_markup=markup, parse_mode="HTML")
         
-        msg = bot.send_message(call.message.chat.id, "Или просто напишите количество минут:", reply_markup=get_cancel_kbd())
+        msg = bot.send_message(call.message.chat.id, "Или напишите количество минут текстом:", reply_markup=get_cancel_kbd())
         bot.register_next_step_handler(msg, process_duration_input, chat_id)
 
-    def process_duration_input(message, chat_id, bot, user_sessions):
+    def process_duration_input(message, chat_id): 
         if check_cancellation(message, bot, user_sessions):
+            bot.send_message(message.chat.id, "Действие отменено", reply_markup=types.ReplyKeyboardRemove())
             show_group_main_menu(message.chat.id, chat_id, message.from_user.id, bot)
             return
+
         if not message.text or not message.text.isdigit():
             msg = bot.send_message(message.chat.id, "⚠️ Введите число минут:", reply_markup=get_cancel_kbd())
-            bot.register_next_step_handler(msg, process_duration_input, chat_id, bot, user_sessions)
+            bot.register_next_step_handler(msg, process_duration_input, chat_id) 
             return
+
         update_group_duration(chat_id, message.text)
         bot.send_message(message.chat.id, f"✅ Время изменено на {message.text} мин.", reply_markup=types.ReplyKeyboardRemove())
         show_group_main_menu(message.chat.id, chat_id, message.from_user.id, bot)
@@ -124,7 +139,7 @@ def register_settings_handlers(bot, user_sessions):
         msg = bot.send_message(call.message.chat.id, "Введите username (без @):", reply_markup=get_cancel_kbd())
         bot.register_next_step_handler(msg, process_exception_input, chat_id)
 
-    def process_exception_input(message, chat_id, bot, user_sessions):
+    def process_exception_input(message, chat_id):
         if check_cancellation(message, bot, user_sessions):
             show_exceptions_menu(message, chat_id, bot)
             return
@@ -162,12 +177,19 @@ def register_settings_handlers(bot, user_sessions):
     def handle_get_tag_in_group(call):
         chat_id = int(call.data.replace('get_my_tag_', ''))
         user_id = call.from_user.id
-        tag = get_user_internal_tag(chat_id, user_id)
         
-        if tag:
-            bot.answer_callback_query(call.id, f"✅ Твой тег: {tag}", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, "❌ Тег еще не назначен администратором.", show_alert=True)
+        try:
+            member = bot.get_chat_member(chat_id, user_id)
+            tg_tag = getattr(member, 'custom_tag', None) or getattr(member, 'custom_title', None)
+            
+            save_user_id(chat_id, user_id, call.from_user.username, call.from_user.first_name, tg_tag)
+            
+            if tg_tag:
+                bot.answer_callback_query(call.id, f"✅ Ваш статус: {tg_tag}", show_alert=True)
+            else:
+                bot.answer_callback_query(call.id, "💡 У вас нет активного тега в этом чате. Попросите администратора назначить вам 'Member Tag' в настройках группы.", show_alert=True)
+        except Exception as e:
+            bot.answer_callback_query(call.id, "❌ Не удалось получить данные профиля.")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_tag_members_'))
     def list_members_for_tags(call):
@@ -191,7 +213,7 @@ def register_settings_handlers(bot, user_sessions):
         bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
 
     def process_tag_input(message, u_id, c_id):
-        if check_cancellation(message):
+        if check_cancellation(message, bot, user_sessions): 
             bot.send_message(message.chat.id, "Отмена редактирования.", reply_markup=types.ReplyKeyboardRemove())
             list_members_for_tags_manual(message.chat.id, c_id, bot)
             return
@@ -221,6 +243,7 @@ def register_settings_handlers(bot, user_sessions):
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_main_'))
     def group_main_menu_call(call):
+        bot.clear_step_handler_by_chat_id(call.message.chat.id) # На случай, если нажали "Назад" при вводе
         target_chat_id = call.data.replace('set_main_', '')
         show_group_main_menu(call.message.chat.id, target_chat_id, call.from_user.id, bot, call.message.message_id)
 
@@ -244,8 +267,43 @@ def register_settings_handlers(bot, user_sessions):
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('save_dur_'))
     def save_duration_btn(call):
+        bot.clear_step_handler_by_chat_id(call.message.chat.id)
+        
         parts = call.data.replace('save_dur_', '').split(':')
         dur, chat_id = int(parts[0]), parts[1]
         update_group_duration(chat_id, dur)
         bot.answer_callback_query(call.id, f"✅ Сохранено: {dur} мин.")
         show_group_main_menu(call.message.chat.id, chat_id, call.from_user.id, bot, call.message.message_id)
+    
+    @bot.message_handler(func=lambda m: user_sessions.get(m.from_user.id, {}).get('step') == 'settings_wait_group_id')
+    def process_manual_group_id(message):
+        if check_cancellation(message, bot, user_sessions): return
+        target_id = message.text.strip()
+
+        try:
+            member = bot.get_chat_member(int(target_id), message.from_user.id)
+            if member.status in ['creator', 'administrator']:
+                user_sessions[message.from_user.id]['step'] = None
+                show_group_main_menu(message.chat.id, target_id, message.from_user.id, bot)
+            else:
+                bot.reply_to(message, "❌ Вы не администратор в этой группе.")
+        except:
+            bot.reply_to(message, "❌ Группа не найдена или бот в ней не состоит.")
+    
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('edt_tag_'))
+    def ask_tag_text(call):
+        bot.clear_step_handler_by_chat_id(call.message.chat.id)
+        
+        parts = call.data.split('_')
+        u_id, c_id = parts[2], parts[3]
+        
+        current_tag = get_user_internal_tag(c_id, u_id) or "не установлен"
+        
+        text = (f"👤 Пользователь ID: <code>{u_id}</code>\n"
+                f"🏷 Текущий тег: <b>{current_tag}</b>\n\n"
+                f"Введите новый тег или нажмите 'Отмена' на клавиатуре:")
+        
+        msg = bot.send_message(call.message.chat.id, text, 
+                               reply_markup=get_cancel_kbd(), parse_mode="HTML")
+        bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
+    
