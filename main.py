@@ -62,11 +62,11 @@ class RegistrationMiddleware(BaseMiddleware):
                 print(f"⚠️ Не удалось получить статус для {user.id}: {e}")
 
             save_user_id(
-                chat.id, 
-                user.id, 
-                user.username, 
-                first_name=user.first_name, 
-                custom_title=custom_title
+            chat.id, 
+            user.id, 
+            user.username, 
+            first_name=user.first_name, 
+            telegram_tag=custom_title  
             )
 
 bot.setup_middleware(RegistrationMiddleware(bot))
