@@ -40,8 +40,17 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                 else:
                     lines = [f"📋 <b>Статус сбора: {title}</b>\nУчастников: {count}\n"]
                     
+                    invisible_space = "\u00ad"
+
                     for i, p in enumerate(col['participants'], 1):
-                        name = escape_html(p['name'])
+                        raw_name = p['name']
+                        
+                        if len(raw_name) > 1:
+                            safe_name = raw_name[0] + invisible_space + raw_name[1:]
+                        else:
+                            safe_name = raw_name
+                            
+                        name = escape_html(safe_name)
                         u_id = p.get('user_id') or p.get('id') or get_user_id_by_name(chat_id, p['name'])
                         
                         tag = get_user_internal_tag(chat_id, u_id) if u_id else None
