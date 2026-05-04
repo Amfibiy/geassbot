@@ -47,17 +47,27 @@ class RegistrationMiddleware(BaseMiddleware):
     def pre_process(self, message, data):
         if isinstance(message, Message):
             chat, user = message.chat, message.from_user
+            current_msg = message
         elif isinstance(message, CallbackQuery):
             chat, user = message.message.chat, message.from_user
-        else: return
+            current_msg = message.message
+        else: 
+            return
 
         if chat.type in ['group', 'supergroup'] and user and not user.is_bot:
             save_known_group(chat.id, chat.title)
             
             official_tag = None
             try:
-                member = self.bot.get_chat_member(chat.id, user.id)
-                official_tag = getattr(member, 'tag', None) or getattr(member, 'custom_title', None)
+                official_tag = getattr(current_msg, 'sender_tag', None)
+
+                if not official_tag:
+                    member = self.bot.get_chat_member(chat.id, user.id)
+                    
+                    official_tag = (
+                        member.json.get('tag') or 
+                        getattr(member, 'custom_title', None)
+                    )
             except Exception as e:
                 print(f"⚠️ Не удалось получить статус для {user.id}: {e}")
 

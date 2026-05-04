@@ -177,34 +177,41 @@ def register_settings_handlers(bot, user_sessions):
     def handle_get_tag_in_group(call):
         chat_id = int(call.data.replace('get_my_tag_', ''))
         user_id = call.from_user.id
-        
         try:
             member = bot.get_chat_member(chat_id, user_id)
-            tg_tag = getattr(member, 'tag', None) or getattr(member, 'custom_title', None)
-            
-            save_user_id(chat_id, user_id, call.from_user.username, call.from_user.first_name, tg_tag)
-            
-            if tg_tag:
-                bot.answer_callback_query(call.id, f"✅ Ваш статус: {tg_tag}", show_alert=True)
+            official_tag = (
+                getattr(call.message, 'sender_tag', None) or 
+                member.json.get('tag') or 
+                getattr(member, 'custom_title', None)
+            )
+
+            save_user_id(chat_id, user_id, call.from_user.username, call.from_user.first_name, official_tag)
+        
+            final_tag = get_user_internal_tag(chat_id, user_id)
+        
+            if final_tag:
+                bot.answer_callback_query(call.id, f"✅ Твой статус в базе: {final_tag}", show_alert=True)
             else:
-                bot.answer_callback_query(call.id, "💡 У вас нет активного тега в этом чате. Попросите администратора назначить вам 'Member Tag' в настройках группы.", show_alert=True)
+                bot.answer_callback_query(call.id, "💡 Тег не установлен. Установи его в настройках группы или обратись к админу.", show_alert=True)
         except Exception as e:
-            bot.answer_callback_query(call.id, "❌ Не удалось получить данные профиля.")
+            print(f"Error in get_tag button: {e}")
+            bot.answer_callback_query(call.id, "❌ Ошибка доступа. Бот должен быть админом.")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_tag_members_'))
     def list_members_for_tags(call):
         chat_id = call.data.replace('list_tag_members_', '')
         members = get_chat_members_list(chat_id)
         markup = types.InlineKeyboardMarkup(row_width=2)
-        
-        for m in members[:20]: # Ограничим список для красоты
-            name = m.get('name') or m.get('username') or f"ID {m['user_id']}"
+        for m in members[:50]: 
+            tag = m.get('internal_tag', '')
+            tag_display = f" [{tag}]" if tag else ""
+            name = f"{m.get('name', '???')}{tag_display}"
             markup.add(types.InlineKeyboardButton(name, callback_data=f"edt_tag_{m['user_id']}_{chat_id}"))
             
         markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=f"manage_tags_{chat_id}"))
-        bot.edit_message_text("Выберите пользователя для установки тега:", 
+        bot.edit_message_text("Выберите пользователя для редактирования:", 
                              call.message.chat.id, call.message.message_id, reply_markup=markup)
-
+        
     @bot.callback_query_handler(func=lambda call: call.data.startswith('edt_tag_'))
     def ask_tag_text(call):
         parts = call.data.split('_')
@@ -217,7 +224,8 @@ def register_settings_handlers(bot, user_sessions):
             bot.send_message(message.chat.id, "Отмена редактирования.", reply_markup=types.ReplyKeyboardRemove())
             list_members_for_tags_manual(message.chat.id, c_id, bot)
             return
-        
+        if message.from_user.id in user_sessions:
+            user_sessions[message.from_user.id]['step'] = None
         new_tag = message.text.strip()
         update_internal_tag(c_id, u_id, new_tag)
         bot.send_message(message.chat.id, f"✅ Тег '{new_tag}' сохранен.", reply_markup=types.ReplyKeyboardRemove())
@@ -275,7 +283,7 @@ def register_settings_handlers(bot, user_sessions):
         bot.answer_callback_query(call.id, f"✅ Сохранено: {dur} мин.")
         show_group_main_menu(call.message.chat.id, chat_id, call.from_user.id, bot, call.message.message_id)
     
-    @bot.message_handler(func=lambda m: user_sessions.get(m.from_user.id, {}).get('step') == 'settings_wait_group_id')
+    @bot.message_handler(func=lambda m: m.chat.type == 'private' and user_sessions.get(m.from_user.id, {}).get('step') == 'settings_wait_group_id')
     def process_manual_group_id(message):
         if check_cancellation(message, bot, user_sessions): return
         target_id = message.text.strip()
@@ -301,7 +309,7 @@ def register_settings_handlers(bot, user_sessions):
         
         text = (f"👤 Пользователь ID: <code>{u_id}</code>\n"
                 f"🏷 Текущий тег: <b>{current_tag}</b>\n\n"
-                f"Введите новый тег или нажмите 'Отмена' на клавиатуре:")
+                f"Введите новый текст тега (до 16 симв.):")
         
         msg = bot.send_message(call.message.chat.id, text, 
                                reply_markup=get_cancel_kbd(), parse_mode="HTML")

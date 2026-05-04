@@ -75,6 +75,7 @@ def clear_all_history():
 
 def save_user_id(chat_id, u_id, username, first_name=None, telegram_tag=None):
     c_id = int(chat_id)
+    user_id = int(u_id)
     clean_username = username.replace("@", "").strip() if username else None
     
     update_data = {
@@ -82,11 +83,12 @@ def save_user_id(chat_id, u_id, username, first_name=None, telegram_tag=None):
         'name': first_name,
         'last_seen': datetime.datetime.now()
     }
+    
     if telegram_tag:
         update_data['internal_tag'] = telegram_tag
 
     members_col.update_one(
-        {'chat_id': c_id, 'user_id': int(u_id)},
+        {'chat_id': c_id, 'user_id': user_id},
         {'$set': update_data},
         upsert=True
     )
@@ -169,7 +171,11 @@ def get_user_id_by_name(chat_id, name):
     return user['user_id'] if user else None
 
 def update_internal_tag(chat_id, user_id, tag_text):
-    members_col.update_one({'chat_id': int(chat_id), 'user_id': int(user_id)}, {'$set': {'internal_tag': tag_text.strip()}}, upsert=True)
+    members_col.update_one(
+        {'chat_id': int(chat_id), 'user_id': int(user_id)}, 
+        {'$set': {'internal_tag': tag_text.strip()}}, 
+        upsert=True
+    )
 
 def get_user_internal_tag(chat_id, user_id):
     user = members_col.find_one({'chat_id': int(chat_id), 'user_id': int(user_id)})
