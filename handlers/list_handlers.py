@@ -30,37 +30,38 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         if message.chat.type in ['group', 'supergroup']:
             chat_id = message.chat.id
             col = active_collections.get(chat_id) or test_collection.get(chat_id)
-            
+        
             if col:
                 count = len(col['participants'])
                 title = escape_html(col.get('title', 'Сбор'))
-                
+            
                 if count == 0:
                     bot.reply_to(message, f"📋 <b>Статус сбора: {title}</b>\nПока никто не присоединился.", parse_mode="HTML")
                 else:
                     lines = [f"📋 <b>Статус сбора: {title}</b>\nУчастников: {count}\n"]
-                    
+                
                     invisible_space = "\u00ad"
 
                     for i, p in enumerate(col['participants'], 1):
                         raw_name = p['name']
-                        
-                        if len(raw_name) > 1:
-                            safe_name = raw_name[0] + invisible_space + raw_name[1:]
+                    
+                        name_escaped = escape_html(raw_name)
+                    
+                        if len(name_escaped) > 1:
+                            display_name = name_escaped[0] + invisible_space + name_escaped[1:]
                         else:
-                            safe_name = raw_name
-                            
-                        name = escape_html(safe_name)
-                        u_id = p.get('user_id') or p.get('id') or get_user_id_by_name(chat_id, p['name'])
+                            display_name = name_escaped
                         
+                        u_id = p.get('user_id') or p.get('id') or get_user_id_by_name(chat_id, p['name'])
+                    
                         tag = get_user_internal_tag(chat_id, u_id) if u_id else None
                         tag_display = f" (<code>{escape_html(tag)}</code>)" if tag else ""
-                        
+                    
                         if u_id:
-                            mention = f'<a href="tg://user?id={u_id}">{name}</a>'
+                            mention = f'<a href="tg://user?id={u_id}">{display_name}</a>'
                         else:
-                            mention = name
-                        
+                            mention = display_name
+                    
                         lines.append(f"{i}. {mention}{tag_display}")
 
                     bot.reply_to(
@@ -68,7 +69,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                         "\n".join(lines), 
                         parse_mode="HTML", 
                         disable_web_page_preview=True
-                    )
+                        )
             else:
                 bot.reply_to(message, "ℹ️ В данный момент нет активных сборов.")
         else:

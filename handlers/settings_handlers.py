@@ -13,10 +13,8 @@ from database.mongo import (
     clear_all_exceptions,
     get_exceptions_details, 
     remove_from_exceptions,
-    update_internal_tag, 
     get_user_internal_tag, 
     get_chat_members_list,
-    save_user_id 
 )
 
 def register_settings_handlers(bot, user_sessions):
@@ -189,35 +187,35 @@ def register_settings_handlers(bot, user_sessions):
         chat_id = call.data.replace('list_tag_members_', '')
         members = get_chat_members_list(chat_id)
         markup = types.InlineKeyboardMarkup(row_width=2)
+    
         for m in members[:50]: 
-            tag = m.get('internal_tag', '')
-            tag_display = f" [{tag}]" if tag else ""
-            name = f"{m.get('name', '???')}{tag_display}"
+            name = m.get('name', f"ID {m['user_id']}")
             markup.add(types.InlineKeyboardButton(name, callback_data=f"edt_tag_{m['user_id']}_{chat_id}"))
             
         markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=f"manage_tags_{chat_id}"))
-        bot.edit_message_text("Выберите пользователя для редактирования:", 
-                             call.message.chat.id, call.message.message_id, reply_markup=markup)
+        bot.edit_message_text("Выберите пользователя для установки тега в Telegram:", 
+                         call.message.chat.id, call.message.message_id, reply_markup=markup)
         
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('edt_tag_'))
-    def ask_tag_text(call):
-        parts = call.data.split('_')
-        u_id, c_id = parts[2], parts[3]
-        msg = bot.send_message(call.message.chat.id, f"Введите новый тег для пользователя {u_id}:", reply_markup=get_cancel_kbd())
-        bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
-
     def process_tag_input(message, u_id, c_id):
         if check_cancellation(message, bot, user_sessions): 
-            bot.send_message(message.chat.id, "Отмена редактирования.", reply_markup=types.ReplyKeyboardRemove())
-            list_members_for_tags_manual(message.chat.id, c_id, bot)
+            bot.send_message(message.chat.id, "❌ Отмена редактирования.", reply_markup=types.ReplyKeyboardRemove())
+            show_tag_management_after_input(message.chat.id, c_id, bot)
             return
-        if message.from_user.id in user_sessions:
-            user_sessions[message.from_user.id]['step'] = None
-        new_tag = message.text.strip()
-        update_internal_tag(c_id, u_id, new_tag)
-        bot.send_message(message.chat.id, f"✅ Тег '{new_tag}' сохранен.", reply_markup=types.ReplyKeyboardRemove())
-        show_tag_management_after_input(message.chat.id, c_id, bot)
 
+        new_tag = message.text.strip()
+    
+        if len(new_tag) > 16:
+            msg = bot.send_message(message.chat.id, "⚠️ Ошибка: Тег не должен превышать 16 символов. Попробуйте снова:", reply_markup=get_cancel_kbd())
+            bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
+            return
+
+        try:
+            bot.set_chat_member_tag(c_id, u_id, tag=new_tag)     
+            bot.send_message(message.chat.id, f"✅ Тег «{new_tag}» успешно установлен в Telegram для пользователя {u_id}.", reply_markup=types.ReplyKeyboardRemove())
+        except Exception as e:
+            bot.send_message(message.chat.id, f"❌ Не удалось установить тег в Telegram.\nОшибка: {e}", reply_markup=types.ReplyKeyboardRemove())
+    
+        show_tag_management_after_input(message.chat.id, c_id, bot)
     def list_members_for_tags_manual(chat_id_pm, target_chat_id, bot):
         members = get_chat_members_list(target_chat_id)
         markup = types.InlineKeyboardMarkup(row_width=2)
@@ -230,10 +228,9 @@ def register_settings_handlers(bot, user_sessions):
     def show_tag_management_after_input(chat_id_pm, target_chat_id, bot):
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("📢 Кнопка получения в чат", callback_data=f"send_tag_btn_{target_chat_id}"),
             types.InlineKeyboardButton("✏️ Изменить теги участников", callback_data=f"list_tag_members_{target_chat_id}"),
             types.InlineKeyboardButton("🔙 Назад в меню группы", callback_data=f"set_main_{target_chat_id}")
-        )
+            )
         bot.send_message(chat_id_pm, "🏷 <b>Управление тегами участников</b>", reply_markup=markup, parse_mode="HTML")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_main_'))
