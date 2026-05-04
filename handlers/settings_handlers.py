@@ -1,4 +1,5 @@
 from telebot import types
+from telebot import api_helper
 from utils.helpers import (
     get_admin_groups,
     get_cancel_kbd, 
@@ -15,6 +16,7 @@ from database.mongo import (
     remove_from_exceptions,
     get_user_internal_tag, 
     get_chat_members_list,
+    update_internal_tag,
 )
 
 def register_settings_handlers(bot, user_sessions):
@@ -203,19 +205,29 @@ def register_settings_handlers(bot, user_sessions):
             return
 
         new_tag = message.text.strip()
-    
+
         if len(new_tag) > 16:
             msg = bot.send_message(message.chat.id, "⚠️ Ошибка: Тег не должен превышать 16 символов. Попробуйте снова:", reply_markup=get_cancel_kbd())
             bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
             return
 
         try:
-            bot.set_chat_member_tag(c_id, u_id, tag=new_tag)     
+            payload = {
+                'chat_id': c_id,
+                'user_id': u_id,
+                'tag': new_tag
+                }
+        
+            api_helper.make_request(bot.token, 'setChatMemberTag', params=payload)
+        
+            update_internal_tag(c_id, u_id, new_tag)
+
             bot.send_message(message.chat.id, f"✅ Тег «{new_tag}» успешно установлен в Telegram для пользователя {u_id}.", reply_markup=types.ReplyKeyboardRemove())
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Не удалось установить тег в Telegram.\nОшибка: {e}", reply_markup=types.ReplyKeyboardRemove())
-    
+
         show_tag_management_after_input(message.chat.id, c_id, bot)
+
     def list_members_for_tags_manual(chat_id_pm, target_chat_id, bot):
         members = get_chat_members_list(target_chat_id)
         markup = types.InlineKeyboardMarkup(row_width=2)
