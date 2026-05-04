@@ -54,19 +54,19 @@ class RegistrationMiddleware(BaseMiddleware):
         if chat.type in ['group', 'supergroup'] and user and not user.is_bot:
             save_known_group(chat.id, chat.title)
             
-            custom_title = None
+            official_tag = None
             try:
                 member = self.bot.get_chat_member(chat.id, user.id)
-                custom_title = getattr(member, 'custom_title', None)
+                official_tag = getattr(member, 'tag', None) or getattr(member, 'custom_title', None)
             except Exception as e:
                 print(f"⚠️ Не удалось получить статус для {user.id}: {e}")
 
             save_user_id(
-            chat.id, 
-            user.id, 
-            user.username, 
-            first_name=user.first_name, 
-            telegram_tag=custom_title  
+                chat.id, 
+                user.id, 
+                user.username, 
+                first_name=user.first_name, 
+                telegram_tag=official_tag  
             )
 
 bot.setup_middleware(RegistrationMiddleware(bot))

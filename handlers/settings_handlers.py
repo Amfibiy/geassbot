@@ -180,7 +180,7 @@ def register_settings_handlers(bot, user_sessions):
         
         try:
             member = bot.get_chat_member(chat_id, user_id)
-            tg_tag = getattr(member, 'custom_tag', None) or getattr(member, 'custom_title', None)
+            tg_tag = getattr(member, 'tag', None) or getattr(member, 'custom_title', None)
             
             save_user_id(chat_id, user_id, call.from_user.username, call.from_user.first_name, tg_tag)
             
