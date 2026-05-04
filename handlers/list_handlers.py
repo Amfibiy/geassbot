@@ -44,8 +44,9 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                         name = escape_html(p['name'])
                         u_id = p.get('user_id') or p.get('id') or get_user_id_by_name(chat_id, p['name'])
                         
-                        tag = get_user_internal_tag(chat_id, u_id) 
-                        tag_display = f" [<code>{tag}</code>]" if tag else ""
+                        tag = get_user_internal_tag(chat_id, u_id) if u_id else None
+                        tag_display = f" (<code>{escape_html(tag)}</code>)" if tag else ""
+                        
                         if u_id:
                             mention = f'<a href="tg://user?id={u_id}">{name}</a>'
                         else:
