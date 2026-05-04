@@ -1,5 +1,4 @@
 from telebot import types
-import telebot.api_helper as api_helper
 from utils.helpers import (
     get_admin_groups,
     get_cancel_kbd, 
@@ -217,14 +216,14 @@ def register_settings_handlers(bot, user_sessions):
                 'user_id': u_id,
                 'tag': new_tag
                 }
-        
-            api_helper.make_request(bot.token, 'setChatMemberTag', params=payload)
+
+            bot.api_helper.make_request(bot.token, 'setChatMemberTag', params=payload)
         
             update_internal_tag(c_id, u_id, new_tag)
 
-            bot.send_message(message.chat.id, f"✅ Тег «{new_tag}» успешно установлен в Telegram для пользователя {u_id}.", reply_markup=types.ReplyKeyboardRemove())
+            bot.send_message(message.chat.id, f"✅ Тег «{new_tag}» успешно установлен для пользователя {u_id}.", reply_markup=types.ReplyKeyboardRemove())
         except Exception as e:
-            bot.send_message(message.chat.id, f"❌ Не удалось установить тег в Telegram.\nОшибка: {e}", reply_markup=types.ReplyKeyboardRemove())
+            bot.send_message(message.chat.id, f"❌ Ошибка API: {e}", reply_markup=types.ReplyKeyboardRemove())
 
         show_tag_management_after_input(message.chat.id, c_id, bot)
 
