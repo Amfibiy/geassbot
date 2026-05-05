@@ -216,7 +216,9 @@ def register_settings_handlers(bot, user_sessions):
             is_admin = member.status == 'administrator'
 
             if is_admin:
+                print(f"[LOG] Начинаю процедуру переназначения для админа {u_id} в чате {c_id}")
                 try:
+
                     bot.restrict_chat_member(
                         c_id, u_id, 
                         can_send_messages=True, can_send_media_messages=True, 
@@ -224,6 +226,8 @@ def register_settings_handlers(bot, user_sessions):
                         can_add_web_page_previews=True, can_change_info=False, 
                         can_invite_users=True, can_pin_messages=False
                     )
+                    print(f"[LOG] Шаг 1 (Снятие прав) выполнен успешно для {u_id}")
+
 
                     bot.promote_chat_member(
                         chat_id=c_id, user_id=u_id,
@@ -238,8 +242,11 @@ def register_settings_handlers(bot, user_sessions):
                         can_manage_chat=getattr(member, 'can_manage_chat', False),
                         can_manage_video_chats=getattr(member, 'can_manage_video_chats', False)
                     )
+                    print(f"[LOG] Шаг 2 (Возврат прав) выполнен успешно для {u_id}. Теперь бот — владелец прав.")
+
                 except Exception as promote_err:
-                    print(f"Ошибка иерархии: {promote_err}")
+                    print(f"[ERROR] Ошибка иерархии при переназначении: {promote_err}")
+                    bot.send_message(message.chat.id, f"⚠️ Не удалось переназначить права: {promote_err}")
 
                 method = "setChatAdministratorCustomTitle"
                 payload = {'chat_id': c_id, 'user_id': u_id, 'custom_title': new_tag}
@@ -252,11 +259,15 @@ def register_settings_handlers(bot, user_sessions):
 
             if response.get('ok'):
                 update_internal_tag(c_id, u_id, new_tag)
+                print(f"[LOG] Титул '{new_tag}' успешно применен для {u_id}")
                 bot.send_message(message.chat.id, f"✅ Успешно установлен {'титул' if is_admin else 'тег'}: «{new_tag}».", reply_markup=types.ReplyKeyboardRemove())
             else:
-                bot.send_message(message.chat.id, f"❌ Ошибка API: {response.get('description')}")
+                desc = response.get('description', 'Unknown error')
+                print(f"[ERROR] API Telegram вернул ошибку: {desc}")
+                bot.send_message(message.chat.id, f"❌ Ошибка API: {desc}")
 
         except Exception as e:
+            print(f"[CRITICAL] Ошибка выполнения: {e}")
             bot.send_message(message.chat.id, f"❌ Ошибка выполнения: {e}")
 
         show_tag_management_after_input(message.chat.id, c_id, bot)
