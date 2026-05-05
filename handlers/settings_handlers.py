@@ -1,5 +1,4 @@
 from telebot import types
-import requests
 
 from utils.helpers import (
     get_admin_groups,
@@ -15,9 +14,6 @@ from database.mongo import (
     clear_all_exceptions,
     get_exceptions_details, 
     remove_from_exceptions,
-    get_user_internal_tag, 
-    get_chat_members_list,
-    update_internal_tag,
 )
 
 def register_settings_handlers(bot, user_sessions):
@@ -58,10 +54,8 @@ def register_settings_handlers(bot, user_sessions):
             types.InlineKeyboardButton("⏱ Изменить время", callback_data=f"set_dur_{target_chat_id}"),
             types.InlineKeyboardButton("🌍 Выбрать часовой пояс", callback_data=f"set_tz_{target_chat_id}"),
             types.InlineKeyboardButton("🚫 Исключения", callback_data=f"set_ex_{target_chat_id}"),
-            types.InlineKeyboardButton("🏷 Управление тегами", callback_data=f"manage_tags_{target_chat_id}"),
             types.InlineKeyboardButton("🔙 К списку групп", callback_data="set_back_list")
-        )
-        
+        ) 
         if message_id:
             try:
                 bot.edit_message_text(text, chat_id_to_send, message_id, reply_markup=markup, parse_mode="HTML")
@@ -70,7 +64,6 @@ def register_settings_handlers(bot, user_sessions):
         else:
             bot.send_message(chat_id_to_send, text, reply_markup=markup, parse_mode="HTML")
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('set_tz_'))
     def set_timezone_menu(call):
         chat_id = call.data.replace('set_tz_', '')
         markup = types.InlineKeyboardMarkup(row_width=3)
@@ -173,122 +166,7 @@ def register_settings_handlers(bot, user_sessions):
         bot.send_message(message.chat.id, res_msg, reply_markup=types.ReplyKeyboardRemove())
         show_exceptions_menu(message, chat_id, bot)
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('manage_tags_'))
-    def manage_tags_menu(call):
-        chat_id = call.data.replace('manage_tags_', '')
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(
-            types.InlineKeyboardButton("✏️ Изменить теги участников", callback_data=f"list_tag_members_{chat_id}"),
-            types.InlineKeyboardButton("🔙 Назад", callback_data=f"set_main_{chat_id}")
-        )
-        bot.edit_message_text("🏷 <b>Управление тегами участников</b>", 
-                             call.message.chat.id, call.message.message_id, 
-                             reply_markup=markup, parse_mode="HTML")
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('list_tag_members_'))
-    def list_members_for_tags(call):
-        chat_id = call.data.replace('list_tag_members_', '')
-        members = get_chat_members_list(chat_id)
-        markup = types.InlineKeyboardMarkup(row_width=2)
-    
-        for m in members[:50]: 
-            name = m.get('name', f"ID {m['user_id']}")
-            markup.add(types.InlineKeyboardButton(name, callback_data=f"edt_tag_{m['user_id']}_{chat_id}"))
-            
-        markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=f"manage_tags_{chat_id}"))
-        bot.edit_message_text("Выберите пользователя для установки тега в Telegram:", 
-                         call.message.chat.id, call.message.message_id, reply_markup=markup)
         
-    def process_tag_input(message, u_id, c_id):
-        if check_cancellation(message, bot, user_sessions): 
-            bot.send_message(message.chat.id, "❌ Отмена редактирования.", reply_markup=types.ReplyKeyboardRemove())
-            show_tag_management_after_input(message.chat.id, c_id, bot)
-            return
-
-        new_tag = message.text.strip()
-        if len(new_tag) > 16:
-            msg = bot.send_message(message.chat.id, "⚠️ Слишком длинный тег. Попробуйте снова (до 16 симв.):", reply_markup=get_cancel_kbd())
-            bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
-            return
-
-        try:
-            member = bot.get_chat_member(c_id, u_id)
-            is_admin = member.status == 'administrator'
-
-            if is_admin:
-                print(f"[LOG] Начинаю процедуру переназначения для админа {u_id} в чате {c_id}")
-                try:
-
-                    bot.restrict_chat_member(
-                        c_id, u_id, 
-                        can_send_messages=True, can_send_media_messages=True, 
-                        can_send_polls=True, can_send_other_messages=True, 
-                        can_add_web_page_previews=True, can_change_info=False, 
-                        can_invite_users=True, can_pin_messages=False
-                    )
-                    print(f"[LOG] Шаг 1 (Снятие прав) выполнен успешно для {u_id}")
-
-
-                    bot.promote_chat_member(
-                        chat_id=c_id, user_id=u_id,
-                        can_change_info=getattr(member, 'can_change_info', False),
-                        can_post_messages=getattr(member, 'can_post_messages', False),
-                        can_edit_messages=getattr(member, 'can_edit_messages', False),
-                        can_delete_messages=getattr(member, 'can_delete_messages', False),
-                        can_invite_users=getattr(member, 'can_invite_users', False),
-                        can_restrict_members=getattr(member, 'can_restrict_members', False),
-                        can_pin_messages=getattr(member, 'can_pin_messages', False),
-                        can_promote_members=getattr(member, 'can_promote_members', False),
-                        can_manage_chat=getattr(member, 'can_manage_chat', False),
-                        can_manage_video_chats=getattr(member, 'can_manage_video_chats', False)
-                    )
-                    print(f"[LOG] Шаг 2 (Возврат прав) выполнен успешно для {u_id}. Теперь бот — владелец прав.")
-
-                except Exception as promote_err:
-                    print(f"[ERROR] Ошибка иерархии при переназначении: {promote_err}")
-                    bot.send_message(message.chat.id, f"⚠️ Не удалось переназначить права: {promote_err}")
-
-                method = "setChatAdministratorCustomTitle"
-                payload = {'chat_id': c_id, 'user_id': u_id, 'custom_title': new_tag}
-            else:
-                method = "setChatMemberTag"
-                payload = {'chat_id': c_id, 'user_id': u_id, 'tag': new_tag}
-
-            url = f"https://api.telegram.org/bot{bot.token}/{method}"
-            response = requests.post(url, data=payload, timeout=10).json()
-
-            if response.get('ok'):
-                update_internal_tag(c_id, u_id, new_tag)
-                print(f"[LOG] Титул '{new_tag}' успешно применен для {u_id}")
-                bot.send_message(message.chat.id, f"✅ Успешно установлен {'титул' if is_admin else 'тег'}: «{new_tag}».", reply_markup=types.ReplyKeyboardRemove())
-            else:
-                desc = response.get('description', 'Unknown error')
-                print(f"[ERROR] API Telegram вернул ошибку: {desc}")
-                bot.send_message(message.chat.id, f"❌ Ошибка API: {desc}")
-
-        except Exception as e:
-            print(f"[CRITICAL] Ошибка выполнения: {e}")
-            bot.send_message(message.chat.id, f"❌ Ошибка выполнения: {e}")
-
-        show_tag_management_after_input(message.chat.id, c_id, bot)
-
-    def list_members_for_tags_manual(chat_id_pm, target_chat_id, bot):
-        members = get_chat_members_list(target_chat_id)
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        for m in members[:20]:
-            name = m.get('name') or m.get('username') or f"ID {m['user_id']}"
-            markup.add(types.InlineKeyboardButton(name, callback_data=f"edt_tag_{m['user_id']}_{target_chat_id}"))
-        markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data=f"manage_tags_{target_chat_id}"))
-        bot.send_message(chat_id_pm, "Выберите пользователя:", reply_markup=markup)
-
-    def show_tag_management_after_input(chat_id_pm, target_chat_id, bot):
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(
-            types.InlineKeyboardButton("✏️ Изменить теги участников", callback_data=f"list_tag_members_{target_chat_id}"),
-            types.InlineKeyboardButton("🔙 Назад в меню группы", callback_data=f"set_main_{target_chat_id}")
-            )
-        bot.send_message(chat_id_pm, "🏷 <b>Управление тегами участников</b>", reply_markup=markup, parse_mode="HTML")
-
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_main_'))
     def group_main_menu_call(call):
         bot.clear_step_handler_by_chat_id(call.message.chat.id) # На случай, если нажали "Назад" при вводе
@@ -337,34 +215,6 @@ def register_settings_handlers(bot, user_sessions):
                 bot.reply_to(message, "❌ Вы не администратор в этой группе.")
         except:
             bot.reply_to(message, "❌ Группа не найдена или бот в ней не состоит.")
-    
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('edt_tag_'))
-    def ask_tag_text(call):
-        bot.clear_step_handler_by_chat_id(call.message.chat.id)
-        parts = call.data.split('_')
-        u_id, c_id = parts[2], parts[3]
-
-        try:
-            member = bot.get_chat_member(c_id, u_id)
-            if member.status == 'creator':
-                bot.answer_callback_query(call.id, "⚠️ Невозможно изменить титул владельца", show_alert=True)
-                bot.send_message(
-                    call.message.chat.id, 
-                    "<b>Действие ограничено:</b> Вы являетесь Владельцем. Telegram запрещает ботам менять ваш титул. Сделайте это вручную в настройках группы.",
-                    parse_mode="HTML"
-                )
-                return
-
-            current_tag = get_user_internal_tag(c_id, u_id) or "не установлен"
-            text = (f"👤 Пользователь ID: <code>{u_id}</code>\n"
-                    f"🏷 Текущий тег: <b>{current_tag}</b>\n\n"
-                    f"Введите новый текст тега (до 16 симв.):")
-            
-            msg = bot.send_message(call.message.chat.id, text, reply_markup=get_cancel_kbd(), parse_mode="HTML")
-            bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
-            
-        except Exception as e:
-            bot.send_message(call.message.chat.id, f"❌ Ошибка при проверке прав: {e}")
     
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_ex_'))
     def handle_ex_menu_call(call):
