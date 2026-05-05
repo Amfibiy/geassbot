@@ -40,15 +40,15 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                 else:
                     lines = [f"📋 <b>Статус сбора: {title}</b>\nУчастников: {count}\n"]
                 
-                    invisible_space = "\u00ad"
+                    zwsp = "\u200b"
 
                     for i, p in enumerate(col['participants'], 1):
                         raw_name = p['name']
-                    
                         name_escaped = escape_html(raw_name)
                     
                         if len(name_escaped) > 1:
-                            display_name = name_escaped[0] + invisible_space + name_escaped[1:]
+                            mid = len(name_escaped) // 2
+                            display_name = name_escaped[:mid] + zwsp + name_escaped[mid:]
                         else:
                             display_name = name_escaped
                         
@@ -69,7 +69,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                         "\n".join(lines), 
                         parse_mode="HTML", 
                         disable_web_page_preview=True
-                        )
+                    )
             else:
                 bot.reply_to(message, "ℹ️ В данный момент нет активных сборов.")
         else:
