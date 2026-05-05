@@ -173,6 +173,3 @@ def get_user_id_by_name(chat_id, name):
 def get_user_internal_tag(chat_id, user_id):
     user = members_col.find_one({'chat_id': int(chat_id), 'user_id': int(user_id)})
     return user.get('internal_tag') if user else None
-
-def get_chat_members_list(chat_id):
-    return list(members_col.find({'chat_id': int(chat_id)}))

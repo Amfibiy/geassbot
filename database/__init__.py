@@ -7,8 +7,5 @@ from .mongo import (
     get_all_members_ids,
     delete_history_records,  
     clear_all_history,
-    get_user_id_by_name,
-    update_internal_tag,
-    get_user_internal_tag,
-    get_chat_members_list,       
+    get_user_id_by_name
 )
