@@ -124,7 +124,7 @@ def register_settings_handlers(bot, user_sessions):
             text += f"<b>Сейчас в списке:</b> {', '.join(raw_list)}\n\n"
             text += "Нажмите на кнопку, чтобы <b>удалить</b>:"
         else: 
-            text += "Список пуст. Все участники получают теги."
+            text += "Список пуст. Все участники получают уведомления."
             
         markup = types.InlineKeyboardMarkup(row_width=1)
         
@@ -214,30 +214,35 @@ def register_settings_handlers(bot, user_sessions):
 
         try:
             member = bot.get_chat_member(c_id, u_id)
+            
             if member.status == 'creator':
                 bot.send_message(
-                message.chat.id, 
-                "⚠️ Вы являетесь Владельцем группы. \n\n"
-                "Telegram запрещает ботам менять титул владельца. "
-                "Пожалуйста, измените его вручную в настройках группы: \n"
-                "Изм. -> Администраторы -> Ваш профиль -> Должность.",
-                reply_markup=types.ReplyKeyboardRemove()
-            )
+                    message.chat.id, 
+                    "⚠️ Вы Владелец. Бот не может менять ваш титул.\n"
+                    "Сделайте это вручную в настройках группы.",
+                    reply_markup=types.ReplyKeyboardRemove()
+                )
                 show_tag_management_after_input(message.chat.id, c_id, bot)
                 return
             
-            is_admin = member.status in ['administrator', 'creator']
+            is_admin = member.status == 'administrator'
 
             if is_admin:
                 try:
-                    current_privileges = member.__dict__ 
+                    bot.promote_chat_member(
+                        chat_id=c_id, user_id=u_id,
+                        can_change_info=False, can_post_messages=False,
+                        can_edit_messages=False, can_delete_messages=False,
+                        can_invite_users=False, can_restrict_members=False,
+                        can_pin_messages=False, can_promote_members=False,
+                        can_manage_chat=False, can_manage_video_chats=False
+                    )
                     
                     bot.promote_chat_member(
-                        chat_id=c_id,
-                        user_id=u_id,
+                        chat_id=c_id, user_id=u_id,
                         can_change_info=member.can_change_info,
-                        can_post_messages=member.can_post_messages,
-                        can_edit_messages=member.can_edit_messages,
+                        can_post_messages=getattr(member, 'can_post_messages', True),
+                        can_edit_messages=getattr(member, 'can_edit_messages', True),
                         can_delete_messages=member.can_delete_messages,
                         can_invite_users=member.can_invite_users,
                         can_restrict_members=member.can_restrict_members,
@@ -247,22 +252,15 @@ def register_settings_handlers(bot, user_sessions):
                         can_manage_video_chats=getattr(member, 'can_manage_video_chats', True)
                     )
                 except Exception as promote_err:
-                    print(f"Не удалось переназначить права: {promote_err}")
+                    print(f"Ошибка при переназначении прав админа: {promote_err}")
 
                 method = "setChatAdministratorCustomTitle"
-                payload = {
-                    'chat_id': c_id,
-                    'user_id': u_id,
-                    'custom_title': new_tag 
-                }
+                payload = {'chat_id': c_id, 'user_id': u_id, 'custom_title': new_tag}
             else:
                 method = "setChatMemberTag"
-                payload = {
-                    'chat_id': c_id,
-                    'user_id': u_id,
-                    'tag': new_tag
-                }
+                payload = {'chat_id': c_id, 'user_id': u_id, 'tag': new_tag}
 
+            # Выполнение запроса
             url = f"https://api.telegram.org/bot{bot.token}/{method}"
             response = requests.post(url, data=payload, timeout=10).json()
 
@@ -271,15 +269,10 @@ def register_settings_handlers(bot, user_sessions):
                 bot.send_message(message.chat.id, f"✅ Успешно установлен {'титул' if is_admin else 'тег'}: «{new_tag}».", reply_markup=types.ReplyKeyboardRemove())
             else:
                 description = response.get('description', 'Неизвестная ошибка')
-                if "CHAT_CREATOR_REQUIRED" in description:
-                    msg_err = "❌ Ошибка: Изменять титул администратора может только Владелец группы."
-                else:
-                    msg_err = f"❌ Ошибка Telegram: {description}"
-            
-                bot.send_message(message.chat.id, msg_err, reply_markup=types.ReplyKeyboardRemove())
+                bot.send_message(message.chat.id, f"❌ Ошибка Telegram: {description}", reply_markup=types.ReplyKeyboardRemove())
 
         except Exception as e:
-            bot.send_message(message.chat.id, f"❌ Ошибка: {e}", reply_markup=types.ReplyKeyboardRemove())
+            bot.send_message(message.chat.id, f"❌ Ошибка кода: {e}", reply_markup=types.ReplyKeyboardRemove())
 
         show_tag_management_after_input(message.chat.id, c_id, bot)
 
