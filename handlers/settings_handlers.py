@@ -214,15 +214,47 @@ def register_settings_handlers(bot, user_sessions):
 
         try:
             member = bot.get_chat_member(c_id, u_id)
+            if member.status == 'creator':
+                bot.send_message(
+                message.chat.id, 
+                "⚠️ Вы являетесь Владельцем группы. \n\n"
+                "Telegram запрещает ботам менять титул владельца. "
+                "Пожалуйста, измените его вручную в настройках группы: \n"
+                "Изм. -> Администраторы -> Ваш профиль -> Должность.",
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+                show_tag_management_after_input(message.chat.id, c_id, bot)
+                return
+            
             is_admin = member.status in ['administrator', 'creator']
 
             if is_admin:
+                try:
+                    current_privileges = member.__dict__ 
+                    
+                    bot.promote_chat_member(
+                        chat_id=c_id,
+                        user_id=u_id,
+                        can_change_info=member.can_change_info,
+                        can_post_messages=member.can_post_messages,
+                        can_edit_messages=member.can_edit_messages,
+                        can_delete_messages=member.can_delete_messages,
+                        can_invite_users=member.can_invite_users,
+                        can_restrict_members=member.can_restrict_members,
+                        can_pin_messages=member.can_pin_messages,
+                        can_promote_members=member.can_promote_members,
+                        can_manage_chat=getattr(member, 'can_manage_chat', True),
+                        can_manage_video_chats=getattr(member, 'can_manage_video_chats', True)
+                    )
+                except Exception as promote_err:
+                    print(f"Не удалось переназначить права: {promote_err}")
+
                 method = "setChatAdministratorCustomTitle"
                 payload = {
                     'chat_id': c_id,
                     'user_id': u_id,
                     'custom_title': new_tag 
-                    }
+                }
             else:
                 method = "setChatMemberTag"
                 payload = {
