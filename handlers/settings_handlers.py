@@ -1,5 +1,5 @@
 from telebot import types
-from telebot import api_helper
+import requests
 
 from utils.helpers import (
     get_admin_groups,
@@ -213,19 +213,24 @@ def register_settings_handlers(bot, user_sessions):
             return
 
         try:
+            url = f"https://api.telegram.org/bot{bot.token}/setChatMemberTag"
             payload = {
                 'chat_id': c_id,
                 'user_id': u_id,
                 'tag': new_tag
-                }
+            }
+            
+            response = requests.post(url, data=payload, timeout=10).json()
 
-            bot.api_helper.make_request(bot.token, 'setChatMemberTag', params=payload)
-        
-            update_internal_tag(c_id, u_id, new_tag)
+            if response.get('ok'):
+                update_internal_tag(c_id, u_id, new_tag)
+                bot.send_message(message.chat.id, f"✅ Тег «{new_tag}» успешно установлен для пользователя {u_id}.", reply_markup=types.ReplyKeyboardRemove())
+            else:
+                description = response.get('description', 'Неизвестная ошибка API')
+                bot.send_message(message.chat.id, f"❌ Ошибка Telegram: {description}", reply_markup=types.ReplyKeyboardRemove())
 
-            bot.send_message(message.chat.id, f"✅ Тег «{new_tag}» успешно установлен для пользователя {u_id}.", reply_markup=types.ReplyKeyboardRemove())
         except Exception as e:
-            bot.send_message(message.chat.id, f"❌ Ошибка API: {e}", reply_markup=types.ReplyKeyboardRemove())
+            bot.send_message(message.chat.id, f"❌ Ошибка сети/кода: {e}", reply_markup=types.ReplyKeyboardRemove())
 
         show_tag_management_after_input(message.chat.id, c_id, bot)
 
