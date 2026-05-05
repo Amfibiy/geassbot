@@ -206,53 +206,40 @@ def register_settings_handlers(bot, user_sessions):
             return
 
         new_tag = message.text.strip()
-
         if len(new_tag) > 16:
-            msg = bot.send_message(message.chat.id, "⚠️ Ошибка: Тег не должен превышать 16 символов. Попробуйте снова:", reply_markup=get_cancel_kbd())
+            msg = bot.send_message(message.chat.id, "⚠️ Слишком длинный тег. Попробуйте снова (до 16 симв.):", reply_markup=get_cancel_kbd())
             bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
             return
 
         try:
             member = bot.get_chat_member(c_id, u_id)
-            
-            if member.status == 'creator':
-                bot.send_message(
-                    message.chat.id, 
-                    "⚠️ Вы Владелец. Бот не может менять ваш титул.\n"
-                    "Сделайте это вручную в настройках группы.",
-                    reply_markup=types.ReplyKeyboardRemove()
-                )
-                show_tag_management_after_input(message.chat.id, c_id, bot)
-                return
-            
             is_admin = member.status == 'administrator'
 
             if is_admin:
                 try:
-                    bot.promote_chat_member(
-                        chat_id=c_id, user_id=u_id,
-                        can_change_info=False, can_post_messages=False,
-                        can_edit_messages=False, can_delete_messages=False,
-                        can_invite_users=False, can_restrict_members=False,
-                        can_pin_messages=False, can_promote_members=False,
-                        can_manage_chat=False, can_manage_video_chats=False
+                    bot.restrict_chat_member(
+                        c_id, u_id, 
+                        can_send_messages=True, can_send_media_messages=True, 
+                        can_send_polls=True, can_send_other_messages=True, 
+                        can_add_web_page_previews=True, can_change_info=False, 
+                        can_invite_users=True, can_pin_messages=False
                     )
-                    
+
                     bot.promote_chat_member(
                         chat_id=c_id, user_id=u_id,
-                        can_change_info=member.can_change_info,
-                        can_post_messages=getattr(member, 'can_post_messages', True),
-                        can_edit_messages=getattr(member, 'can_edit_messages', True),
-                        can_delete_messages=member.can_delete_messages,
-                        can_invite_users=member.can_invite_users,
-                        can_restrict_members=member.can_restrict_members,
-                        can_pin_messages=member.can_pin_messages,
-                        can_promote_members=member.can_promote_members,
-                        can_manage_chat=getattr(member, 'can_manage_chat', True),
-                        can_manage_video_chats=getattr(member, 'can_manage_video_chats', True)
+                        can_change_info=getattr(member, 'can_change_info', False),
+                        can_post_messages=getattr(member, 'can_post_messages', False),
+                        can_edit_messages=getattr(member, 'can_edit_messages', False),
+                        can_delete_messages=getattr(member, 'can_delete_messages', False),
+                        can_invite_users=getattr(member, 'can_invite_users', False),
+                        can_restrict_members=getattr(member, 'can_restrict_members', False),
+                        can_pin_messages=getattr(member, 'can_pin_messages', False),
+                        can_promote_members=getattr(member, 'can_promote_members', False),
+                        can_manage_chat=getattr(member, 'can_manage_chat', False),
+                        can_manage_video_chats=getattr(member, 'can_manage_video_chats', False)
                     )
                 except Exception as promote_err:
-                    print(f"Ошибка при переназначении прав админа: {promote_err}")
+                    print(f"Ошибка иерархии: {promote_err}")
 
                 method = "setChatAdministratorCustomTitle"
                 payload = {'chat_id': c_id, 'user_id': u_id, 'custom_title': new_tag}
@@ -260,7 +247,6 @@ def register_settings_handlers(bot, user_sessions):
                 method = "setChatMemberTag"
                 payload = {'chat_id': c_id, 'user_id': u_id, 'tag': new_tag}
 
-            # Выполнение запроса
             url = f"https://api.telegram.org/bot{bot.token}/{method}"
             response = requests.post(url, data=payload, timeout=10).json()
 
@@ -268,11 +254,10 @@ def register_settings_handlers(bot, user_sessions):
                 update_internal_tag(c_id, u_id, new_tag)
                 bot.send_message(message.chat.id, f"✅ Успешно установлен {'титул' if is_admin else 'тег'}: «{new_tag}».", reply_markup=types.ReplyKeyboardRemove())
             else:
-                description = response.get('description', 'Неизвестная ошибка')
-                bot.send_message(message.chat.id, f"❌ Ошибка Telegram: {description}", reply_markup=types.ReplyKeyboardRemove())
+                bot.send_message(message.chat.id, f"❌ Ошибка API: {response.get('description')}")
 
         except Exception as e:
-            bot.send_message(message.chat.id, f"❌ Ошибка кода: {e}", reply_markup=types.ReplyKeyboardRemove())
+            bot.send_message(message.chat.id, f"❌ Ошибка выполнения: {e}")
 
         show_tag_management_after_input(message.chat.id, c_id, bot)
 
@@ -345,19 +330,30 @@ def register_settings_handlers(bot, user_sessions):
     @bot.callback_query_handler(func=lambda call: call.data.startswith('edt_tag_'))
     def ask_tag_text(call):
         bot.clear_step_handler_by_chat_id(call.message.chat.id)
-        
         parts = call.data.split('_')
         u_id, c_id = parts[2], parts[3]
-        
-        current_tag = get_user_internal_tag(c_id, u_id) or "не установлен"
-        
-        text = (f"👤 Пользователь ID: <code>{u_id}</code>\n"
-                f"🏷 Текущий тег: <b>{current_tag}</b>\n\n"
-                f"Введите новый текст тега (до 16 симв.):")
-        
-        msg = bot.send_message(call.message.chat.id, text, 
-                               reply_markup=get_cancel_kbd(), parse_mode="HTML")
-        bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
+
+        try:
+            member = bot.get_chat_member(c_id, u_id)
+            if member.status == 'creator':
+                bot.answer_callback_query(call.id, "⚠️ Невозможно изменить титул владельца", show_alert=True)
+                bot.send_message(
+                    call.message.chat.id, 
+                    "<b>Действие ограничено:</b> Вы являетесь Владельцем. Telegram запрещает ботам менять ваш титул. Сделайте это вручную в настройках группы.",
+                    parse_mode="HTML"
+                )
+                return
+
+            current_tag = get_user_internal_tag(c_id, u_id) or "не установлен"
+            text = (f"👤 Пользователь ID: <code>{u_id}</code>\n"
+                    f"🏷 Текущий тег: <b>{current_tag}</b>\n\n"
+                    f"Введите новый текст тега (до 16 симв.):")
+            
+            msg = bot.send_message(call.message.chat.id, text, reply_markup=get_cancel_kbd(), parse_mode="HTML")
+            bot.register_next_step_handler(msg, process_tag_input, u_id, c_id)
+            
+        except Exception as e:
+            bot.send_message(call.message.chat.id, f"❌ Ошибка при проверке прав: {e}")
     
     @bot.callback_query_handler(func=lambda call: call.data.startswith('set_ex_'))
     def handle_ex_menu_call(call):
