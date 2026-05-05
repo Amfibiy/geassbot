@@ -213,24 +213,41 @@ def register_settings_handlers(bot, user_sessions):
             return
 
         try:
-            url = f"https://api.telegram.org/bot{bot.token}/setChatMemberTag"
-            payload = {
-                'chat_id': c_id,
-                'user_id': u_id,
-                'tag': new_tag
-            }
-            
+            member = bot.get_chat_member(c_id, u_id)
+            is_admin = member.status in ['administrator', 'creator']
+
+            if is_admin:
+                method = "setChatAdministratorCustomTitle"
+                payload = {
+                    'chat_id': c_id,
+                    'user_id': u_id,
+                    'custom_title': new_tag 
+                    }
+            else:
+                method = "setChatMemberTag"
+                payload = {
+                    'chat_id': c_id,
+                    'user_id': u_id,
+                    'tag': new_tag
+                }
+
+            url = f"https://api.telegram.org/bot{bot.token}/{method}"
             response = requests.post(url, data=payload, timeout=10).json()
 
             if response.get('ok'):
                 update_internal_tag(c_id, u_id, new_tag)
-                bot.send_message(message.chat.id, f"✅ Тег «{new_tag}» успешно установлен для пользователя {u_id}.", reply_markup=types.ReplyKeyboardRemove())
+                bot.send_message(message.chat.id, f"✅ Успешно установлен {'титул' if is_admin else 'тег'}: «{new_tag}».", reply_markup=types.ReplyKeyboardRemove())
             else:
-                description = response.get('description', 'Неизвестная ошибка API')
-                bot.send_message(message.chat.id, f"❌ Ошибка Telegram: {description}", reply_markup=types.ReplyKeyboardRemove())
+                description = response.get('description', 'Неизвестная ошибка')
+                if "CHAT_CREATOR_REQUIRED" in description:
+                    msg_err = "❌ Ошибка: Изменять титул администратора может только Владелец группы."
+                else:
+                    msg_err = f"❌ Ошибка Telegram: {description}"
+            
+                bot.send_message(message.chat.id, msg_err, reply_markup=types.ReplyKeyboardRemove())
 
         except Exception as e:
-            bot.send_message(message.chat.id, f"❌ Ошибка сети/кода: {e}", reply_markup=types.ReplyKeyboardRemove())
+            bot.send_message(message.chat.id, f"❌ Ошибка: {e}", reply_markup=types.ReplyKeyboardRemove())
 
         show_tag_management_after_input(message.chat.id, c_id, bot)
 
