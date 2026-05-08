@@ -1,7 +1,7 @@
 import datetime
 from telebot import types
-from database.mongo import load_history_for_chat
-from utils.helpers import get_admin_groups,escape_html
+from database.mongo import load_history_for_chat,get_user_internal_tag,get_combined_settings
+from utils.helpers import get_admin_groups,escape_html,get_tz_offset_hours
 
 def show_participants_list(message, bot, active_collections, test_collection, known_groups, user_sessions):
     admin_groups = get_admin_groups(message.from_user.id, bot)
@@ -64,7 +64,6 @@ def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, ses
     for r in records:
         for p in r.get('participants', []):
             u_id = p.get('id') or p.get('user_id') 
-            
             if u_id and u_id not in unique_participants:
                 unique_participants[u_id] = {
                     'name': p.get('name', 'Аноним'),
@@ -81,9 +80,14 @@ def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, ses
     if count > 0:
         text += "<b>Список участников:</b>\n"
         for i, (u_id, info) in enumerate(unique_participants.items(), 1):
-            name = escape_html(info['name'])
-            username = f" (@{info['username']})" if info.get('username') else ""
-            text += f"{i}. {name}{username}\n"
+            name_escaped = escape_html(info['name'])
+            
+            mention = f'<a href="tg://user?id={u_id}">{name_escaped}</a>'
+            
+            tag = get_user_internal_tag(chat_id, u_id)
+            tag_display = f" (<code>{escape_html(tag)}</code>)" if tag else ""
+            
+            text += f"{i}. {mention}{tag_display}\n"
     else:
         text += "<i>За этот период данных нет.</i>"
 
@@ -100,22 +104,35 @@ def show_result_by_date(call_or_msg, chat_id, begin_ts, end_ts, period_name, ses
 
 def show_all_time_menu(call, session, bot):
     markup = types.InlineKeyboardMarkup(row_width=2)
-    now = datetime.datetime.utcnow()
+    chat_id = session.get('list_chat_id')
+    settings = get_combined_settings(chat_id, call.from_user.id)
+    offset = get_tz_offset_hours(settings.get('timezone', 'МСК+2'))
+    
+    now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=offset)
     
     markup.add(types.InlineKeyboardButton("♾️ Вся история", callback_data=f"list_period_0_{int(now.timestamp())}_Вся история"))
     
     buttons = []
+    first_day_of_current = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
     for i in range(12):
-        # Логика смещения по месяцам
-        f_day = (now.replace(day=1) - datetime.timedelta(days=i*31)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if f_day.month == 12:
-            next_m = f_day.replace(year=f_day.year + 1, month=1)
+        m_start = first_day_of_current
+        for _ in range(i):
+            m_start = (m_start - datetime.timedelta(days=1)).replace(day=1)
+            
+        if m_start.month == 12:
+            m_end = m_start.replace(year=m_start.year + 1, month=1) - datetime.timedelta(seconds=1)
         else:
-            next_m = f_day.replace(month=f_day.month + 1)
-        l_day = next_m - datetime.timedelta(seconds=1)
+            m_end = m_start.replace(month=m_start.month + 1) - datetime.timedelta(seconds=1)
         
-        label = f_day.strftime("%m.%Y")
-        buttons.append(types.InlineKeyboardButton(text=f"📅 {label}", callback_data=f"list_mview_{int(f_day.timestamp())}_{int(l_day.timestamp())}_{label}"))
+        begin_utc = (m_start - datetime.timedelta(hours=offset)).timestamp()
+        end_utc = (m_end - datetime.timedelta(hours=offset)).timestamp()
+        
+        label = m_start.strftime("%m.%Y")
+        buttons.append(types.InlineKeyboardButton(
+            text=f"📅 {label}", 
+            callback_data=f"list_mview_{int(begin_utc)}_{int(end_utc)}_{label}"
+        ))
     
     markup.add(*buttons)
     markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="list_back_to_periods"))

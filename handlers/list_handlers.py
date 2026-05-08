@@ -30,11 +30,11 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
         if message.chat.type in ['group', 'supergroup']:
             chat_id = message.chat.id
             col = active_collections.get(chat_id) or test_collection.get(chat_id)
-        
+    
             if col:
                 count = len(col['participants'])
                 title = escape_html(col.get('title', 'Сбор'))
-            
+        
                 if count == 0:
                     bot.reply_to(message, f"📋 <b>Статус сбора: {title}</b>\nПока никто не присоединился.", parse_mode="HTML")
                 else:
@@ -45,23 +45,23 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
                     for i, p in enumerate(col['participants'], 1):
                         raw_name = p['name']
                         name_escaped = escape_html(raw_name)
-                    
+                
                         if len(name_escaped) > 1:
                             mid = len(name_escaped) // 2
                             display_name = name_escaped[:mid] + zwsp + name_escaped[mid:]
                         else:
                             display_name = name_escaped
-                        
+                    
                         u_id = p.get('user_id') or p.get('id') or get_user_id_by_name(chat_id, p['name'])
                     
                         tag = get_user_internal_tag(chat_id, u_id) if u_id else None
                         tag_display = f" (<code>{escape_html(tag)}</code>)" if tag else ""
-                    
+                
                         if u_id:
-                            mention = f'<a href="tg://user?id={u_id}">{display_name}</a>'
+                            mention = f'<a href="tg://user?id={u_id}">{display_name}</a>{zwsp}'
                         else:
                             mention = display_name
-                    
+                
                         lines.append(f"{i}. {mention}{tag_display}")
 
                     bot.reply_to(
@@ -137,7 +137,7 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
     def handle_list_manual_date(message):
         u_id = message.from_user.id
         session = user_sessions.get(u_id)
-    
+
         if not session:
             return
         if check_cancellation(message, bot, user_sessions):
@@ -146,37 +146,45 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
             return
 
         chat_id = session.get('list_chat_id')
+        settings = get_combined_settings(chat_id, u_id)
+        tz_str = settings.get('timezone', 'МСК+2')
+        offset = get_tz_offset_hours(tz_str)
+
         raw = message.text.strip().replace(" ", "").replace("-", ".").replace("/", ".")
         parts = raw.split(".")
-    
+
         if len(parts) >= 6:
             try:
                 date_str1 = f"{parts[0]}.{parts[1]}.{parts[2]}"
                 date_str2 = f"{parts[3]}.{parts[4]}.{parts[5]}"
-            
-                d1 = validate_date(date_str1)
-                d2 = validate_date(date_str2)
-        
-                if d1 and d2:
-                    begin = d1.timestamp()
-                    end = d2.replace(hour=23, minute=59, second=59).timestamp()
-                    p_name = f"{date_str1} — {date_str2}"
+
+                d1_local = validate_date(date_str1) 
+                d2_local = validate_date(date_str2)
+
+                if d1_local and d2_local:
+                    d1_start = d1_local.replace(hour=0, minute=0, second=0)
+                    d2_end = d2_local.replace(hour=23, minute=59, second=59)
+
+                    begin = (d1_start - datetime.timedelta(hours=offset)).timestamp()
+                    end = (d2_end - datetime.timedelta(hours=offset)).timestamp()
                 
+                    p_name = f"{date_str1} — {date_str2}"
+
                     bot.send_message(message.chat.id, "✅ Период принят.", reply_markup=types.ReplyKeyboardRemove())
                     show_result_by_date(message, chat_id, begin, end, p_name, session, bot, back_cb="list_back_to_periods")
-                
-                    session['step'] = "list_choice_period"
+
+                    session['step'] = None 
                     return
             except Exception as e:
                 print(f"Ошибка парсинга даты: {e}")
 
         error_text = (
-        "❌ <b>Неверный формат.</b>\n\n"
-        "Введите две даты слитно через точки:\n"
-        "<code>13.04.26.14.04.26</code>\n\n"
-        "Или через дефис:\n"
-        "<code>13.04.2026 - 14.04.2026</code>"
-    )
+            "❌ <b>Неверный формат.</b>\n\n"
+            "Введите две даты слитно через точки:\n"
+            "<code>13.04.26.14.04.26</code>\n\n"
+            "Или через дефис:\n"
+            "<code>13.04.2026 - 14.04.2026</code>"
+        )
         bot.reply_to(message, error_text, parse_mode="HTML")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith('list_view_'))
@@ -242,21 +250,31 @@ def register_list_handlers(bot, active_collections, test_collection, known_group
     @bot.callback_query_handler(func=lambda call: call.data.startswith(('list_mview_', 'list_wview_', 'list_dview_')))
     def handle_drilldown(call):
         u_id = call.from_user.id
-        session = user_sessions.get(u_id, {})
-        data = call.data.split('_', 4) 
-        v_type, b_ts, e_ts, label = data[1], data[2], data[3], data[4]
+        session = user_sessions.get(u_id)
+        if not session:
+            bot.answer_callback_query(call.id, "Сессия истекла", show_alert=True)
+            return
+        try:
+            parts = call.data.split('_')
+            v_type = parts[1] 
+            b_ts = parts[2]
+            e_ts = parts[3]
+            label = "_".join(parts[4:]) 
         
-        session['list_last_menu_cb'] = call.data
+            session['list_last_menu_cb'] = call.data
         
-        if v_type == 'mview':
-            session['list_parent_mview'] = call.data
-            show_weeks_of_month_menu(call, bot, b_ts, e_ts, label, back_cb="list_view_all")
-        elif v_type == 'wview':
-            session['list_parent_wview'] = call.data
-            back_cb = session.get('list_parent_mview', 'list_back_to_periods')
-            show_days_of_week_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
-        elif v_type == 'dview':
-            back_cb = session.get('list_parent_wview', 'list_back_to_periods')
-            show_hours_of_day_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
+            if v_type == 'mview':
+                session['list_parent_mview'] = call.data
+                show_weeks_of_month_menu(call, bot, b_ts, e_ts, label, back_cb="list_view_all")
+            elif v_type == 'wview':
+                session['list_parent_wview'] = call.data
+                back_cb = session.get('list_parent_mview', 'list_back_to_periods')
+                show_days_of_week_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
+            elif v_type == 'dview':
+                back_cb = session.get('list_parent_wview', 'list_back_to_periods')
+                show_hours_of_day_menu(call, bot, b_ts, e_ts, label, back_cb=back_cb)
             
-        bot.answer_callback_query(call.id)
+            bot.answer_callback_query(call.id)
+        except Exception as e:
+            print(f"Drilldown error: {e}")
+            bot.answer_callback_query(call.id, "Ошибка навигации")
