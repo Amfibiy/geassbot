@@ -112,7 +112,5 @@ if __name__ == "__main__":
     threading.Thread(target=update_counters, args=(bot, active_collections, test_collection), daemon=True).start()
 
     print("✅ Бот в сети. Ожидаем сообщений.")
-    bot.infinity_polling(
-        allowed_updates=['message', 'callback_query', 'message_reaction'],
-        skip_pending_updates=True
-    )
+    print("✅ Бот в сети. Ожидаем сообщений.")
+    bot.infinity_polling(allowed_updates=['message', 'callback_query', 'message_reaction'])
