@@ -35,7 +35,7 @@ def index():
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000)) 
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 bot = telebot.TeleBot(BOT_TOKEN, use_class_middlewares=True)
 
@@ -45,16 +45,17 @@ class RegistrationMiddleware(BaseMiddleware):
         self.update_types = ['message', 'callback_query']
 
     def pre_process(self, message, data):
+        # Жесткая проверка типов, чтобы middleware не падала от системных апдейтов
         if isinstance(message, Message):
             chat, user = message.chat, message.from_user
             current_msg = message
-        elif isinstance(message, CallbackQuery):
+        elif isinstance(message, CallbackQuery) and message.message:
             chat, user = message.message.chat, message.from_user
             current_msg = message.message
         else:
             return
         
-        if chat.type in ['group', 'supergroup'] and user and not user.is_bot:
+        if chat and chat.type in ['group', 'supergroup'] and user and not user.is_bot:
             save_known_group(chat.id, chat.title)
             
             official_tag = None
@@ -87,7 +88,8 @@ setup_bot_menu(bot)
 try:
     all_groups_data = get_known_groups()
     known_groups = {g['chat_id'] for g in all_groups_data}
-except: known_groups = set()
+except: 
+    known_groups = set()
 
 register_all_handlers(bot, active_collections, test_collection, known_groups, user_sessions)
 
@@ -96,16 +98,21 @@ def handle_reaction(reaction):
     chat_id = reaction.chat.id
     save_known_group(chat_id, reaction.chat.title or f"Group {chat_id}")
     if reaction.user and not reaction.user.is_bot:
-        save_user_id(chat_id, reaction.user.id, reaction.user.username)
+        save_user_id(chat_id, reaction.user.id, reaction.user.username, first_name=reaction.user.first_name)
 
-    
 if __name__ == "__main__":
     bot.delete_webhook(drop_pending_updates=True)
-    print("✅ Система запущена. Ожидание 20 сек...")
+    
+    threading.Thread(target=run_flask, daemon=True).start()
+    print("✅ Flask-сервер запущен для Render/UptimeRobot.")
+
+    print("⏳ Ожидание 20 сек перед запуском основных потоков бота...")
     time.sleep(20)
 
-    threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=update_counters, args=(bot, active_collections, test_collection), daemon=True).start()
 
     print("✅ Бот в сети. Ожидаем сообщений.")
-    bot.infinity_polling(allowed_updates=['message', 'callback_query', 'message_reaction'])
+    bot.infinity_polling(
+        allowed_updates=['message', 'callback_query', 'message_reaction'],
+        skip_pending_updates=True
+    )
